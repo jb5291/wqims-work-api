@@ -54,6 +54,7 @@ export const WQIMS_DB_CONFIG = {
     notifications: get_env_val("WQIMS_DB_NOTIF"),
     notificationGrpsTbl: get_env_val("WQIMS_DB_NOTIF_GRPS"),
     notificationGrpMembersTbl: get_env_val("WQIMS_DB_NOTIF_GRP_MEMBERS"),
+    notificationGrpThrshldTbl: get_env_val("WQIMS_DB_NOTIF_GRP_THRSHLD"),
     notificationQueueTbl: get_env_val("WQIMS_DB_NOTIF_Q"),
     thresholdTbl: get_env_val("WQIMS_DB_THRSHLD")
 }

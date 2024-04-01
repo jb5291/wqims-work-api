@@ -1,68 +1,49 @@
-import express, { query } from "express";
-import { createPool } from 'oracledb';
+import express from "express";
 import cors from 'cors';
+import swaggerJSDoc from 'swagger-jsdoc';
+import swaggerUI from 'swagger-ui-express';
+import qs from 'qs';
 
-import { WQIMS_DB_CONFIG } from "./util/secrets";
-import { appLogger } from "./util/appLogger";
+import { appLogger } from './util/appLogger';
+import groupsRouter from './routes/groups';
+import usersRouter from './routes/users';
 
+const PORT = process.env.PORT || 3001;
 const app = express();
 app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }))
+app.set('query parser', function(str: string) {
+  return qs.parse(str);
+})
 
-const dbConf = {
-  user: WQIMS_DB_CONFIG.username,
-  password: WQIMS_DB_CONFIG.password,
-  connectString: WQIMS_DB_CONFIG.connection_string
-};
+app.use('/notificationGroups', groupsRouter);
+app.use('/users', usersRouter);
 
-createPool(dbConf)
-  .then(pool => {
-    appLogger.info('Connection pool created');
-    app.get('/api/notificationGroups', async (req, res) => {
-      pool.getConnection((err, conn) => {
-        if(err) {
-          appLogger.error('Error getting connection: ', err);
-          return res.status(500).send('Internal Server Error');
-        }
+// swagger jsdoc config
+const options = { 
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'WQIMS API',
+      version: '1.0.0',
+      description: 'API documentation generated using Swagger-jsdoc'
+    }
+  },
+  apis: ['./dist/routes/*.js']
+}
 
-        conn.execute(`select groupName, groupid, objectid FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl}`, [], (err, result) => {
-          if(err) {
-            appLogger.error("Error executing query:", err);
-            return res.status(500).send('Internal Server Error');
-          }
-          res.json(result.rows);
+const swaggerSpec = swaggerJSDoc(options);
 
-          conn.release();
-        });
-      });
-    });
+app.get('/swagger.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+})
 
-    app.get('/api/notificationGroups/:id', async (req, res) => {
-      try {
-        const conn = await pool.getConnection();
-        const group_id = req.params.id;
+app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec));
 
-        const queryGrpUsers = `select user_id FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where group_id = '${group_id.toUpperCase()}'`
-        const queryGrpUsersResult = await conn.execute(queryGrpUsers)
-        const user_ids = queryGrpUsersResult.rows
-        
-        const queryUserNames = `select name, globalid FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where globalid in ('${user_ids?.join(',')}')`
-        const result = await conn.execute(queryUserNames)
-
-        res.json(result.rows)
-
-        conn.release()
-      } catch (err) {
-        appLogger.error('Error getting connection: ', err);
-        return res.status(500).send('Internal Server Error');
-      }        
-    });
-    const PORT = process.env.PORT || 3001;
-    app.listen(PORT, () => {
-      appLogger.info('Proxy server running http://localhost:3001');
-    });
-  })
-  .catch(err => {
-    appLogger.error("Error creating connection pool:", err);
-  })
+app.listen(PORT, () => {
+  appLogger.info(`Proxy server running http://localhost:${PORT}`);
+});
 
   
