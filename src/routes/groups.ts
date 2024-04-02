@@ -56,6 +56,8 @@ OracleDB.createPool(dbConf)
      *  get:
      *    summary: Get list of groups
      *    description: Gets a list of groups from DSNGIST wqims.notificationGroups
+     *    tags: 
+     *      - Notification Groups 
      *    responses:
      *      '200':
      *        description: A list of groups
@@ -98,6 +100,8 @@ OracleDB.createPool(dbConf)
      *  get:
      *    summary: Get list of members for group id
      *    description: Gets a list of members from DSNGIST wqims.users_groups, and returns users from wqims.users
+     *    tags: 
+     *      - Notification Groups 
      *    parameters:
      *      - in: path
      *        name: groupId
@@ -128,9 +132,9 @@ OracleDB.createPool(dbConf)
           appLogger.error('Error getting connection: ', err);
           return res.status(502).send('DB Connection Error');
         }
-        const groupId = req.params.id.toUpperCase();
+        const groupId = req.params.id;
 
-        conn.execute(`select user_id FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where group_id=:groupId`,
+        conn.execute(`select USER_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where GROUP_ID=:groupId`,
         {
           groupId: groupId
         },
@@ -153,6 +157,8 @@ OracleDB.createPool(dbConf)
      *  put:
      *    summary: adds group to group list
      *    description: adds a group from DSNGIST wqims.notificationGroups
+     *    tags: 
+     *      - Notification Groups 
      *    requestBody:
      *      required: true
      *      content:
@@ -225,6 +231,8 @@ OracleDB.createPool(dbConf)
      *  put:
      *    summary: adds member to specified group
      *    description: adds a member to DSNGIST wqims.users_groups
+     *    tags: 
+     *      - Notification Groups 
      *    parameters:
      *      - in: path
      *        name: groupId
@@ -273,7 +281,7 @@ OracleDB.createPool(dbConf)
         }
         const groupId = req.params.id;
         const bodyData = req.body.memberId
-        conn.execute(`insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} (USER_ID, groupId, RID) values (:memberId, :groupId, sde.gdb_util.next_rowid('${WQIMS_DB_CONFIG.username}', '${WQIMS_DB_CONFIG.notificationGrpMembersTbl}'))`,
+        conn.execute(`insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} (USER_ID, GROUP_ID, RID) values (:memberId, :groupId, sde.gdb_util.next_rowid('${WQIMS_DB_CONFIG.username}', '${WQIMS_DB_CONFIG.notificationGrpMembersTbl}'))`,
         {
           memberId: bodyData,
           groupId: groupId
@@ -296,6 +304,8 @@ OracleDB.createPool(dbConf)
      *  delete:
      *    summary: deletes group from group list
      *    description: deletes a group from DSNGIST wqims.notificationGroups and all related records in users_groups and thresholds_groups
+     *    tags: 
+     *      - Notification Groups 
      *    parameters:
      *      - in: path
      *        name: groupId

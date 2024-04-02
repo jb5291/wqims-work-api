@@ -16,15 +16,6 @@ const dbConf = {
  * @swagger
  * components:
  *  schemas:
- *    IGroupData:
- *      type: array
- *      items:
- *        - type: string
- *        - type: string
- *        - type: integer
- *      example:
- *        - ["group 1", "{01298aff-0e18-093d-01c9-740284ba098d}", 736]
- *        - ["group 2", "{23243d98-8c99-4cf7-9683-9404ac69e1a3}", 737]
  *    UserData:
  *      type: array
  *      items:
@@ -56,6 +47,8 @@ OracleDB.createPool(dbConf)
      *  get:
      *    summary: Get list of users
      *    description: Gets a list of groups from DSNGIST wqims.users
+     *    tags: 
+     *      - User Accounts 
      *    responses:
      *      '200':
      *        description: A list of users
@@ -77,13 +70,13 @@ OracleDB.createPool(dbConf)
       pool.getConnection((err, conn) => {
         if(err) {
           appLogger.error('Error getting connection: ', err);
-          return res.status(500).send('Internal Server Error');
+          return res.status(502).send('DB Connection Error');
         }
 
         conn.execute(`select * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl}`, [], (err, result) => {
           if(err) {
             appLogger.error("Error executing query:", err);
-            return res.status(500).send('Internal Server Error');
+            return res.status(502).send('DB Connection Error');
           }
           res.json(result.rows);
 
