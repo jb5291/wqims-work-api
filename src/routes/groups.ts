@@ -22,28 +22,9 @@ const dbConf = {
  *        - type: string
  *        - type: string
  *        - type: integer
- *      example:
- *        - ["group 1", "{01298aff-0e18-093d-01c9-740284ba098d}", 736]
- *        - ["group 2", "{23243d98-8c99-4cf7-9683-9404ac69e1a3}", 737]
- *    UserData:
- *      type: array
- *      items:
- *        - type: integer
- *        - type: string
- *        - type: string
- *        - type: string
- *        - type: string
- *        - type: string
- *        - type: string
- *        - type: string
- *        - type: integer
- *        - type: string
- *        - type: string
- *          nullable: true
- *        - type: string
- *          nullable: true
- *      example:
- *        - [1, "{D6C20167-1934-499C-BD60-20AA99C4145F}", "Bob", "Logistics", "Water", "2225554646", "bob@test.com", "Admin", 0, "tmobile", null, null]
+ *        - type: array
+ *          items:
+ *          - type: string
  */
 
 OracleDB.createPool(dbConf)
@@ -55,7 +36,7 @@ OracleDB.createPool(dbConf)
      * /notificationGroups:
      *  get:
      *    summary: Get list of groups
-     *    description: Gets a list of groups from DSNGIST wqims.notificationGroups
+     *    description: Gets a list of groups from DSNGIST wqims.notificationGroups and user ids from users_groups
      *    tags: 
      *      - Notification Groups 
      *    responses:
@@ -76,79 +57,36 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.get('/', async (req, res) => {
-      pool.getConnection((err, conn) => {
-        if(err) {
-          appLogger.error('Error getting connection: ', err);
-          return res.status(502).send('DB Connection Error');
-        }
-    
-        conn.execute(`select groupName, groupid, objectid FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl}`, [], (err, result) => {
-          if(err) {
-            appLogger.error("Error executing query:", err);
-            return res.status(502).send('DB Connection Error');
-          }
-          res.json(result.rows);
-    
-          conn.release();
-        });
-      });
-    });
-    
-    /**
-     * @swagger
-     * /notificationGroups/{groupId}:
-     *  get:
-     *    summary: Get list of members for group id
-     *    description: Gets a list of members from DSNGIST wqims.users_groups, and returns users from wqims.users
-     *    tags: 
-     *      - Notification Groups 
-     *    parameters:
-     *      - in: path
-     *        name: groupId
-     *        schema:
-     *          type: string
-     *        required: true
-     *        description: global ID of the group
-     *    responses:
-     *      '200':
-     *        description: a list of group members
-     *        content:
-     *          application/json:
-     *            schema:
-     *              type: array
-     *              items:
-     *                memberId: string
-     *      '502':
-     *        description: Bad Gateway
-     *        content:
-     *          application/json:
-     *            schema:
-     *              type: string
-     *              example: 'Bad Gateway: DB Connection Error'
-     */
-    groupsRouter.get('/:id', async (req, res) => {
-      pool.getConnection((err, conn) => {
-        if(err) {
-          appLogger.error('Error getting connection: ', err);
-          return res.status(502).send('DB Connection Error');
-        }
-        const groupId = req.params.id;
+      let connection;
+      try {
+        connection = await pool.getConnection();
 
-        conn.execute(`select USER_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where GROUP_ID=:groupId`,
-        {
-          groupId: groupId
-        },
-        { autoCommit: true },
-        (err, result) => {
-          if(err) {
-            appLogger.error("Error executing query:", err);
-            return res.status(502).send('DB Connection Error');
-          }
-          res.json(result.rows);
+        const groupDataResult: any = await getGroups(connection);
+        const groupIds = groupDataResult.map((row: any) => row[0]);
 
-          conn.release();
-        });
-      });   
+        const memberIdsResult: any = await getMemberIds(groupIds, connection);
+
+        const groups: any = groupDataResult.map((group: any) => ({
+          groupId: group[0],
+          objectId: group[1],
+          groupName: group[2],
+          members: memberIdsResult[group[0]] || []
+        }));
+        
+        res.json(groups);
+      }
+      catch (err) {
+        res.status(502).json({ error: 'DB Connection Error'});
+      }
+      finally {
+        if(connection) {
+          connection.release((err: any) => {
+            if(err) {
+              appLogger.error("Error releasing connection: " + err)
+            }
+          });
+        }
+      }
     });
 
     /**
@@ -380,4 +318,44 @@ OracleDB.createPool(dbConf)
     appLogger.error("Error creating connection pool:", error)
   })
 
+function getGroups(connection:any) {
+  return new Promise((resolve, reject) => {
+    const query = `select groupid, objectid, groupName FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl}`
+    connection.execute(query, [], (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        resolve(result.rows)
+      }
+    });
+  })
+}
+
+function getMemberIds(groupIds: string[], connection: any) {
+  const namedParams = groupIds.map((id: string, index: any) => `:groupId${index}`).join(','); 
+  const bindParams: any = {}
+  groupIds.forEach((id, index) => { bindParams[`groupId${index}`] = id});
+  return new Promise((resolve, reject) => {
+    const query = `select USER_ID, GROUP_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where GROUP_ID IN (${namedParams})`
+
+    connection.execute(query, bindParams, (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        const membersMap: any = {};
+        result.rows.forEach((row: any) => {
+          if(!membersMap[row[1]]) {
+            membersMap[row[1]] = [];
+          }
+          membersMap[row[1]].push(row[0]);
+        });
+        resolve(membersMap)
+      }
+    });
+  })
+}
 export default groupsRouter; 
