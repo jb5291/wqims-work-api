@@ -7,6 +7,7 @@ import qs from 'qs';
 import { appLogger } from './util/appLogger';
 import groupsRouter from './routes/groups';
 import usersRouter from './routes/users';
+import thresholdsRouter from "./routes/thresholds";
 
 const PORT = process.env.PORT || 3001;
 const app = express();
@@ -19,6 +20,7 @@ app.set('query parser', function(str: string) {
 
 app.use('/notificationGroups', groupsRouter);
 app.use('/users', usersRouter);
+app.use('/thresholds', thresholdsRouter);
 
 // swagger jsdoc config
 const options = { 

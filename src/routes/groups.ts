@@ -29,7 +29,7 @@ const dbConf = {
 
 OracleDB.createPool(dbConf)
   .then(pool => {
-    appLogger.info('Connection pool created');
+    appLogger.info('Connection pool created for notification groups');
 
     /**
      * @swagger
@@ -76,6 +76,7 @@ OracleDB.createPool(dbConf)
         res.json(groups);
       }
       catch (err) {
+        appLogger.error(err);
         res.status(502).json({ error: 'DB Connection Error'});
       }
       finally {

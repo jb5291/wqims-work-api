@@ -39,7 +39,7 @@ const dbConf = {
 
 OracleDB.createPool(dbConf)
   .then(pool => {
-    appLogger.info('Connection pool created');
+    appLogger.info('Connection pool created for users');
 
     /**
      * @swagger
