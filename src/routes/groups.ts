@@ -106,6 +106,10 @@ OracleDB.createPool(dbConf)
      *            properties:
      *              groupname:
      *                type: string
+     *              memberIds:
+     *                type: array
+     *                items:
+     *                  - type: string
      *    responses:
      *      '201':
      *        description: Group added successfully
@@ -131,38 +135,43 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.put('/', async (req, res) => {
-      pool.getConnection((err, conn) => {
-        if(err) {
-          appLogger.error('Error getting connection: ', err);
-          return res.status(502).send('DB Connection Error');
-        }
-        const bodyData = req.body.groupname
-        //console.log(req)
-        conn.execute(`insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} (OBJECTID, GROUPNAME, GROUPID) values (sde.gdb_util.next_rowid('wqims', 'notificationGroups'), :value1, sde.gdb_util.next_globalid()) returning GROUPID, OBJECTID into :outGid, :outOid`, 
-        {
-          value1: bodyData,
-          outGid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
-          outOid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
-        }, 
-        { autoCommit: true},
-        (err, result) => {
-          if(err) {
-            appLogger.error("Error executing query:", err);
-            return res.status(502).send('DB Connection Error');
-          }
-          let ids = result.outBinds as any;
-          const resultRecord: any = {
-            groupName: bodyData,
-            groupId: ids.outGid?.[0],
-            objectId: ids.outOid?.[0],
-            members: []
-          }
-          conn.release();
-          return res.status(201).send(resultRecord);
-        });
-      });
-    });
+      let connection;
+      try {
+        connection = await pool.getConnection();
 
+        const groupData = req.body.groupName;
+        const memberData: string[] = req.body.memberIds.length ? req.body.memberIds : [];
+
+        const addGroupResults: any = await addGroup(groupData, connection);
+
+        const addedGroup: any = {
+          groupName: groupData,
+          groupId: addGroupResults.groupId,
+          objectId: addGroupResults.objectId,
+          members: []
+        }
+
+        if(memberData.length) {
+          const addMemberResults: any = await addGroupMemberIds(addedGroup.groupId, memberData, connection)
+
+          addedGroup.members = addMemberResults;
+        } 
+          
+        res.json(addedGroup);
+
+      } catch (err) {
+        res.status(502).json({ error: 'DB Connection Error'});
+      } finally {
+        if(connection) {
+          connection.release((err: any) => {
+            if(err) {
+              appLogger.error("Error releasing connection: " + err)
+            }
+          });
+        }
+      }
+    });
+    
     /**
      * @swagger
      * /notificationGroups/{groupId}:
@@ -185,8 +194,10 @@ OracleDB.createPool(dbConf)
      *          schema:
      *            type: object
      *            properties:
-     *              memberId:
-     *                type: string
+     *              memberIds:
+     *                type: array
+     *                items:
+     *                  - type: string
      *    responses:
      *      '201':
      *        description: Group added successfully
@@ -212,28 +223,27 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.put('/:id', async (req, res) => {
-      pool.getConnection((err, conn) => {
-        if(err) {
-          appLogger.error('Error getting connection: ', err);
-          return res.status(502).send('DB Connection Error');
-        }
+      let connection;
+      try {
+        connection = await pool.getConnection();
+
         const groupId = req.params.id;
-        const bodyData = req.body.memberId
-        conn.execute(`insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} (USER_ID, GROUP_ID, RID) values (:memberId, :groupId, sde.gdb_util.next_rowid('${WQIMS_DB_CONFIG.username}', '${WQIMS_DB_CONFIG.notificationGrpMembersTbl}'))`,
-        {
-          memberId: bodyData,
-          groupId: groupId
-        },
-        { autoCommit: true },
-        (err, result) => {
-          if(err) {
-            appLogger.error("Error executing query:", err);
-            return res.status(502).send('DB Connection Error');
-          }
-          conn.release();
-          return res.status(201).send(`User: ${bodyData} added to group: ${groupId}`)
-        });
-      });
+        const memberData: string[] = req.body.memberIds.length ? req.body.memberIds : [];
+
+        const addMemberResults: any = await addGroupMemberIds(groupId, memberData, connection)
+          
+        res.json(addMemberResults);
+      } catch (err) {
+        res.status(502).json({ error: 'DB Connection Error'});
+      } finally {
+        if(connection) {
+          connection.release((err: any) => {
+            if(err) {
+              appLogger.error("Error releasing connection: " + err)
+            }
+          });
+        }
+      }
     });
 
     /**
@@ -251,11 +261,6 @@ OracleDB.createPool(dbConf)
      *          type: string
      *        required: true
      *        description: global ID of the group
-     *      - in: query
-     *        name: memberId
-     *        schema:
-     *          type: string
-     *        description: member ID of the member
      *    responses:
      *      '200':
      *        description: Group deleted successfully
@@ -268,49 +273,171 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.delete('/:id', async (req, res) => {
-      if(req.query.hasOwnProperty('memberId')) {
-        pool.getConnection((err, conn) => {
-          if(err) {
-            appLogger.error('Error getting connection: ', err);
-            return res.status(502).send('DB Connection Error');
-          }
-          const groupId = req.params.id;
-          const memberId = req.query.memberId as any;
-          conn.execute(`delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where USER_ID=:memberId`,
-          {
-            memberId: memberId
-          },
-          { autoCommit: true },
-          (err, result) => {
+      let connection;
+      try {
+        connection = await pool.getConnection();
+        const groupId = req.params.id.toUpperCase();
+    
+        const deleteGrpExpr = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} where groupid = '${groupId}'`;
+        const deleteUsrGrpsExpr = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where GROUP_ID = '${groupId}'`;
+        // const deleteThrshldGrpsExpr = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} where groupId = '${groupId}'`;
+
+        const deleteGrpResult = await connection.execute(deleteGrpExpr)
+        const deleteUsrGrpsResult = await connection.execute(deleteUsrGrpsExpr);
+        // const deleteThrshldGrpsResult = await connection.execute(deleteThrshldGrpsExpr);
+        
+
+        connection.commit();
+        res.json([deleteGrpResult, deleteUsrGrpsResult]);
+      }
+      catch (err) {
+        res.status(502).json({ error: 'DB Connection Error'});
+      }
+      finally {
+        if(connection) {
+          connection.release((err: any) => {
             if(err) {
-              appLogger.error("Error executing query:", err);
-              return res.status(502).send('DB Connection Error');
+              appLogger.error("Error releasing connection: " + err)
             }
-            conn.release();
-            return res.status(201).send(`User: ${memberId} deleted from group: ${groupId}`)
           });
-        });
-      } 
-      else {
-        try {
-          const conn = await pool.getConnection();
-          const groupId = req.params.id.toUpperCase();
-      
-          const deleteGrpExpr = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} where groupid = '${groupId}'`;
-          const deleteUsrGrpsExpr = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where groupId = '${groupId}'`;
-          // const deleteThrshldGrpsExpr = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} where groupId = '${groupId}'`;
-  
-          const deleteGrpResult = await conn.execute(deleteGrpExpr)
-          const deleteUsrGrpsResult = await conn.execute(deleteUsrGrpsExpr);
-          // const deleteThrshldGrpsResult = await conn.execute(deleteThrshldGrpsExpr);
+        }
+      }
+    });
+
+    /**
+     * @swagger
+     * /notificationGroups/{groupId}:
+     *  post:
+     *    summary: deletes member from group
+     *    description: deletes a member from DSNGIST wqims.users_groups
+     *    tags: 
+     *      - Notification Groups 
+     *    parameters:
+     *      - in: path
+     *        name: groupId
+     *        schema:
+     *          type: string
+     *        required: true
+     *        description: global ID of the group
+     *    requestBody:
+     *      required: true
+     *      content:
+     *        application/json:
+     *          schema:
+     *            type: object
+     *            properties:
+     *              memberIds:
+     *                type: array
+     *                items:
+     *                  - type: string
+     *    responses:
+     *      '200':
+     *        description: members deleted successfully
+     *      '502':
+     *        description: Bad Gateway
+     *        content:
+     *          application/json:
+     *            schema:
+     *              type: string
+     *              example: 'Bad Gateway: DB Connection Error'
+     */
+    groupsRouter.post('/:id', async (req, res) => {
+      let connection;
+      try {
+        connection = await pool.getConnection();
+
+        const groupId = req.params.id;
+        const memberData: string[] = req.body.memberIds.length ? req.body.memberIds : [];
+
+        const deleteMemberResults: any = await removeGroupMemberIds(groupId, memberData, connection)
           
-          conn.commit();
-          conn.release();
-          return res.status(200).send(`Group deleted successfully: ${groupId}`)
-        } catch (err) {
-          appLogger.error('Error getting connection: ', err);
-          return res.status(502).send('DB Connection Error');
+        res.json(deleteMemberResults);
+      } catch (err) {
+        res.status(502).json({ error: 'DB Connection Error'});
+      } finally {
+        if(connection) {
+          connection.release((err: any) => {
+            if(err) {
+              appLogger.error("Error releasing connection: " + err)
+            }
+          });
+        }
+      }
+    });
+
+    /**
+     * @swagger
+     * /notificationGroups/{groupId}:
+     * patch:
+     *    summary: updates group in group list
+     *    description: updates a group from DSNGIST wqims.notificationGroups
+     *    tags:
+     *      - Notification Groups
+     *    parameters:
+     *      - in: path
+     *        name: groupId
+     *        schema:
+     *          type: string
+     *        required: true
+     *        description: global ID of the group
+     *    requestBody:
+     *      required: true
+     *      content:
+     *        application/json:
+     *          schema:
+     *            type: object
+     *            properties:
+     *              groupName:
+     *                type: string
+     *              memberIdsToAdd:
+     *                type: array
+     *                items:
+     *                  type: string
+     *              memberIdsToDelete:
+     *                type: array
+     *                items:
+     *                  type: string
+     */
+    groupsRouter.patch('/:id', async (req, res) => {
+      let connection;
+      try {
+        connection = await pool.getConnection();
+
+        const groupId = req.params.id;
+        const groupData = req.body.groupName;
+        const membersToAdd: string[] = req.body.memberIdsToAdd.length ? req.body.memberIdsToAdd : [];
+        const membersToDelete: string[] = req.body.memberIdsToDelete.length ? req.body.memberIdsToDelete : [];
+
+        const updateGroupResults: any = await updateGroup(groupId, groupData, connection);
+        let addedMemberResults: any = [];
+        let deletedMemberResults: any = [];
+
+        const updatedGroup: any = {
+          groupName: groupData,
+          groupId: groupId,
+          objectId: updateGroupResults.objectId,
+          members: []
+        }
+
+        if(membersToAdd.length) {
+          addedMemberResults = await addGroupMemberIds(groupId, membersToAdd, connection)
         } 
+
+        if(membersToDelete.length) {
+          deletedMemberResults = await removeGroupMemberIds(groupId, membersToDelete, connection)
+        }
+          
+        res.json([updatedGroup, addedMemberResults, deletedMemberResults]);
+      } catch (err) {
+        res.status(502).json({ error: 'DB Connection Error'});
+      } finally {
+        if(connection) {
+          connection.release((err: any) => {
+            if(err) {
+              appLogger.error("Error releasing connection: " + err)
+            }
+          });
+        }
       }
     });
   })
@@ -356,6 +483,107 @@ function getMemberIds(groupIds: string[], connection: any) {
         resolve(membersMap)
       }
     });
+  })
+}
+
+function addGroup(groupName: string, connection: any) {
+  return new Promise((resolve, reject) => {
+    const query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} (OBJECTID, GROUPNAME, GROUPID) values (sde.gdb_util.next_rowid('${WQIMS_DB_CONFIG.username}', '${WQIMS_DB_CONFIG.notificationGrpsTbl}'), :value1, sde.gdb_util.next_globalid()) returning GROUPID, OBJECTID into :outGid, :outOid`;
+
+    const options = {
+      autoCommit: true,
+      bindDefs: [
+        {type: OracleDB.STRING},
+        {type: OracleDB.STRING}
+      ],
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, 
+    {
+      value1: groupName,
+      outGid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
+      outOid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
+    },
+    options,
+    (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        const ids = result.outBinds as any;
+        const resultRecord: any = {
+          groupName: groupName,
+          groupId: ids.outGid?.[0],
+          objectId: ids.outOid?.[0],
+          members: []
+        }
+        resolve(resultRecord);
+      }
+    });
+  })
+}
+
+function addGroupMemberIds(groupId: string, memberIds: string[], connection: any) {
+  return new Promise((resolve, reject) => {
+    const query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} (USER_ID, GROUP_ID) values (:memberId, :groupId)`
+    const binds = memberIds.map((memberId) => [memberId, groupId]);
+    const options = {
+      autoCommit: true,
+      bindDefs: [
+        {type: OracleDB.STRING, maxSize: 38},
+        {type: OracleDB.STRING, maxSize: 38}
+      ],
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.executeMany(query, binds, options, (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        resolve(result);
+      }
+    })
+  })
+}
+
+function removeGroupMemberIds(groupId: string, memberIds: string[], connection: any) {
+  return new Promise((resolve, reject) => {
+    const query = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where GROUP_ID=:groupId and USER_ID=:memberId`
+    const binds = memberIds.map((memberId) => [groupId, memberId]);
+    const options = {
+      autoCommit: true,
+      bindDefs: [
+        {type: OracleDB.STRING, maxSize: 38},
+        {type: OracleDB.STRING, maxSize: 38}
+      ],
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.executeMany(query, binds, options, (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        resolve(result);
+      }
+    })
+  })
+}
+
+function updateGroup(groupId: string, groupName: string, connection: any) {
+  return new Promise((resolve, reject) => {
+    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} set GROUPNAME=:groupName where GROUPID=:groupId`
+    connection.execute(query, { groupName, groupId }, (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        resolve(result);
+      }
+    })
   })
 }
 export default groupsRouter; 
