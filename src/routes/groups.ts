@@ -276,7 +276,7 @@ OracleDB.createPool(dbConf)
       let connection;
       try {
         connection = await pool.getConnection();
-        const groupId = req.params.id.toUpperCase();
+        const groupId = req.params.id;
     
         const deleteGrpExpr = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} where groupid = '${groupId}'`;
         const deleteUsrGrpsExpr = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where GROUP_ID = '${groupId}'`;
@@ -575,7 +575,7 @@ function removeGroupMemberIds(groupId: string, memberIds: string[], connection: 
 function updateGroup(groupId: string, groupName: string, connection: any) {
   return new Promise((resolve, reject) => {
     const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} set GROUPNAME=:groupName where GROUPID=:groupId`
-    connection.execute(query, { groupName, groupId }, (err: any, result: any) => {
+    connection.execute(query, { groupName, groupId }, {autoCommit: true}, (err: any, result: any) => {
       if(err) {
         appLogger.error("Error executing query:", err);
         reject(err)
