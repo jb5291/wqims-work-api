@@ -36,57 +36,29 @@ function get_env_val(key:string){
 
 export const ENVIRONMENT = process.env.NODE_ENV;
 
+export const REDIS_KEY_DEV = get_env_val("REDIS_KEY_DEV");
+export const REDIS_KEY_PROD = get_env_val("REDIS_KEY_PRD");
+
 export const BASEURL = process.env["BASEURL"] ? process.env["BASEURL"] as string : "";
 
 export const WQIMS_DB_CONFIG = {
     username: get_env_val("WQIMS_DB_UN"),
     password: get_env_val("WQIMS_DB_PW"),
     connection_string: get_env_val("WQIMS_DB_TNS"),
-    WQIMSdb: get_env_val("WQIMS_DB_NAME"),
     usersTbl: get_env_val("WQIMS_DB_USERS"),
-    mmisWoTbl: get_env_val("WQIMS_DB_MMIS_WO"),
-    limsTbl1: get_env_val("WQIMS_DB_LIMS_1"),
-    limsTbl2: get_env_val("WQIMS_DB_LIMS_2"),
-    sampleTbl: get_env_val("WQIMS_DB_SMPL"),
-    alertsTbl: get_env_val("WQIMS_DB_ALERTS"),
-    limsAlertsTbl: get_env_val("WQIMS_DB_LIMS_ALERTS"),
-    testTbl: get_env_val("WQIMS_DB_TEST"),
-    notifications: get_env_val("WQIMS_DB_NOTIF"),
     notificationGrpsTbl: get_env_val("WQIMS_DB_NOTIF_GRPS"),
     notificationGrpMembersTbl: get_env_val("WQIMS_DB_NOTIF_GRP_MEMBERS"),
     notificationGrpThrshldTbl: get_env_val("WQIMS_DB_NOTIF_GRP_THRSHLD"),
-    notificationQueueTbl: get_env_val("WQIMS_DB_NOTIF_Q"),
     thresholdTbl: get_env_val("WQIMS_DB_THRSHLD")
 }
 
-export const RPT_DB_CONFIG = {
-    username: get_env_val("RPT_DB_UN"),
-    password: get_env_val("RPT_DB_PW"),
-    connection_string: get_env_val("RPT_DB_TNS"),
-    rptdb: get_env_val("RPT_DB_NAME"),
-    srwodb: get_env_val("RPT_DB_SRWO")
-}
-
-export const MSSQL_CONFIG = {
-    user: get_env_val("LIMS_SQL_USER"),
-    password: get_env_val("LIMS_SQL_PW"),
-    database: get_env_val("LIMS_SQL_DB"),
-    server: get_env_val("LIMS_SQL_SERVER"),
-}
-
-export const all_pools = [WQIMS_DB_CONFIG.WQIMSdb, RPT_DB_CONFIG.rptdb]
-
 export const PORTAL_TOKEN_URL = get_env_val("PORTAL_TOKEN_URL");
-export const OAUTH_CLIENT_ID = get_env_val("OAUTH_CLIENT_ID");
-export const OAUTH_SECRET = get_env_val("OAUTH_SECRET");
 
-export const GEOCODE_SERVICE_URL = get_env_val("GEOCODE_SERVICE_URL");
-export const G_STREET_FIELD = get_env_val("G_STREET_FIELD");
-export const G_CITY_FIELD = get_env_val("G_CITY_FIELD");
-export const G_STATE_FIELD = get_env_val("G_STATE_FIELD");
-export const G_ZIP_FIELD = get_env_val("G_ZIP_FIELD");
+export const PROXY_LISTEN_PORT = get_env_val("PORT");
 
-export const PRESSURE_ZONE_SERVICE_URL = get_env_val("PRESSURE_ZONE_SERVICE_URL");
+export const MS_CLIENT_ID = get_env_val("MS_CLIENT_ID");
+export const MS_SECRET = get_env_val("MS_SECRET");
+export const MS_TENANT_ID = get_env_val("MS_TENANT_ID");
 
 export const TLS_CERT_INFO = {
     type: process.env["APP_CERT_TYPE"],
@@ -118,7 +90,3 @@ export const EMAIL_CONFIG = {
 
 export const TEST_SMS_NUMBER = get_env_val("TEST_SMS_NUMBER");
 export const TEST_SMS_NUMBER_CARRIER = get_env_val("TEST_SMS_NUMBER_CARRIER");
-
-export const MMIS_LOAD_DATE_RANGE = parse_env_int("MMIS_LOAD_DATE_RANGE");
-export const LIMS_LOAD_DATE_RANGE = parse_env_int("LIMS_LOAD_DATE_RANGE");
-export const NOTIFICATION_RETRY_LIMIT = parse_env_int("NOTIFICATION_RETRY_LIMIT")

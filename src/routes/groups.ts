@@ -1,17 +1,15 @@
 import express from 'express';
-import OracleDB from 'oracledb';
+import OracleDB, { Connection } from 'oracledb';
 
 import { WQIMS_DB_CONFIG } from "../util/secrets";
 import { appLogger } from '../util/appLogger';
 
 const groupsRouter = express.Router();
-
 const dbConf = {
   user: WQIMS_DB_CONFIG.username,
   password: WQIMS_DB_CONFIG.password,
   connectString: WQIMS_DB_CONFIG.connection_string
 };
-
 /**
  * @swagger
  * components:
@@ -57,7 +55,7 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.get('/', async (req, res) => {
-      let connection;
+      let connection: Connection | null = null;
       try {
         connection = await pool.getConnection();
 
@@ -136,7 +134,7 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.put('/', async (req, res) => {
-      let connection;
+      let connection: Connection | null = null;
       try {
         connection = await pool.getConnection();
 
@@ -224,7 +222,7 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.put('/:id', async (req, res) => {
-      let connection;
+      let connection: Connection | null = null;
       try {
         connection = await pool.getConnection();
 
@@ -274,7 +272,7 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.delete('/:id', async (req, res) => {
-      let connection;
+      let connection: Connection | null = null;
       try {
         connection = await pool.getConnection();
         const groupId = req.params.id;
@@ -343,7 +341,7 @@ OracleDB.createPool(dbConf)
      *              example: 'Bad Gateway: DB Connection Error'
      */
     groupsRouter.post('/:id', async (req, res) => {
-      let connection;
+      let connection: Connection | null = null;
       try {
         connection = await pool.getConnection();
 
@@ -400,7 +398,7 @@ OracleDB.createPool(dbConf)
      *                  type: string
      */
     groupsRouter.patch('/:id', async (req, res) => {
-      let connection;
+      let connection: Connection | null = null;
       try {
         connection = await pool.getConnection();
 
@@ -461,7 +459,7 @@ function getGroups(connection:any) {
   })
 }
 
-function getMemberIds(groupIds: string[], connection: any) {
+function getMemberIds(groupIds: string[], connection: Connection) {
   const namedParams = groupIds.map((id: string, index: any) => `:groupId${index}`).join(','); 
   const bindParams: any = {}
   groupIds.forEach((id, index) => { bindParams[`groupId${index}`] = id});
@@ -487,7 +485,7 @@ function getMemberIds(groupIds: string[], connection: any) {
   })
 }
 
-function addGroup(groupName: string, connection: any) {
+function addGroup(groupName: string, connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} (OBJECTID, GROUPNAME, GROUPID) values (sde.gdb_util.next_rowid('${WQIMS_DB_CONFIG.username}', '${WQIMS_DB_CONFIG.notificationGrpsTbl}'), :value1, sde.gdb_util.next_globalid()) returning GROUPID, OBJECTID into :outGid, :outOid`;
 
@@ -495,7 +493,7 @@ function addGroup(groupName: string, connection: any) {
       autoCommit: true,
       bindDefs: [
         {type: OracleDB.STRING},
-        {type: OracleDB.STRING}
+        {type: OracleDB.NUMBER}
       ],
       outFormat: OracleDB.OUT_FORMAT_OBJECT
     }
@@ -503,7 +501,7 @@ function addGroup(groupName: string, connection: any) {
     {
       value1: groupName,
       outGid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
-      outOid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
+      outOid: {type: OracleDB.NUMBER, dir: OracleDB.BIND_OUT},
     },
     options,
     (err: any, result: any) => {
@@ -525,11 +523,11 @@ function addGroup(groupName: string, connection: any) {
   })
 }
 
-function addGroupMemberIds(groupId: string, memberIds: string[], connection: any) {
+function addGroupMemberIds(groupId: string, memberIds: string[], connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} (USER_ID, GROUP_ID) values (:memberId, :groupId)`
     const binds = memberIds.map((memberId) => [memberId, groupId]);
-    const options = {
+    const options: any = {
       autoCommit: true,
       bindDefs: [
         {type: OracleDB.STRING, maxSize: 38},
@@ -549,11 +547,11 @@ function addGroupMemberIds(groupId: string, memberIds: string[], connection: any
   })
 }
 
-function removeGroupMemberIds(groupId: string, memberIds: string[], connection: any) {
+function removeGroupMemberIds(groupId: string, memberIds: string[], connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where GROUP_ID=:groupId and USER_ID=:memberId`
     const binds = memberIds.map((memberId) => [groupId, memberId]);
-    const options = {
+    const options: any = {
       autoCommit: true,
       bindDefs: [
         {type: OracleDB.STRING, maxSize: 38},
@@ -573,7 +571,7 @@ function removeGroupMemberIds(groupId: string, memberIds: string[], connection: 
   })
 }
 
-function updateGroup(groupId: string, groupName: string, connection: any) {
+function updateGroup(groupId: string, groupName: string, connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} set GROUPNAME=:groupName where GROUPID=:groupId`
     connection.execute(query, { groupName, groupId }, {autoCommit: true}, (err: any, result: any) => {

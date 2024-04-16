@@ -1,17 +1,15 @@
 import express from 'express';
-import OracleDB from 'oracledb';
+import OracleDB, { Connection } from 'oracledb';
 
 import { WQIMS_DB_CONFIG } from "../util/secrets";
 import { appLogger } from '../util/appLogger';
 
 const thresholdsRouter = express.Router();
-
 const dbConf = {
   user: WQIMS_DB_CONFIG.username,
   password: WQIMS_DB_CONFIG.password,
   connectString: WQIMS_DB_CONFIG.connection_string
 };
-
 /**
  * @swagger
  * components:
@@ -19,10 +17,6 @@ const dbConf = {
  *    ThresholdData:
  *      type: object
  *      properties:
- *        objectId:
- *          type: number
- *        system:
- *          type: string
  *        locCode:
  *          type: string
  *        locName:
@@ -42,8 +36,6 @@ const dbConf = {
  *        closeOutTimeOut:
  *          type: number
  *        checklistId:
- *          type: string
- *        globalId:
  *          type: string
  */
 
@@ -77,7 +69,7 @@ OracleDB.createPool(dbConf)
    *              example: 'Bad Gateway: DB Connection Error'
    */
   thresholdsRouter.get('/', async (req, res) => {
-    let connection;
+    let connection: Connection | null = null;
     try {
       connection = await pool.getConnection();
 
@@ -123,7 +115,7 @@ OracleDB.createPool(dbConf)
    *              example: 'Bad Gateway: DB Connection Error'
    */
   thresholdsRouter.put('/', async (req, res) => {
-    let connection;
+    let connection: Connection | null = null;
     try {
       connection = await pool.getConnection();
 
@@ -147,7 +139,7 @@ OracleDB.createPool(dbConf)
 
   /**
    * @swagger
-   * /thresholds/{thresholdId}:
+   * /thresholds/{id}:
    *  delete:
    *    summary: deletes threshold from thresholds list
    *    description: deletes a threshold from DSNGIST wqims.lims_thresholds
@@ -155,7 +147,7 @@ OracleDB.createPool(dbConf)
    *      - Thresholds
    *    parameters:
    *      - in: path
-   *        name: thresholdId
+   *        name: id
    *        schema:
    *          type: string
    *        required: true
@@ -172,7 +164,7 @@ OracleDB.createPool(dbConf)
    *              example: 'Bad Gateway: DB Connection Error'
    */
   thresholdsRouter.delete('/:id', async (req, res) => {
-    let connection;
+    let connection: Connection | null = null;
     try {
       connection = await pool.getConnection();
 
@@ -196,28 +188,44 @@ OracleDB.createPool(dbConf)
 
   /**
    * @swagger
-   * /thresholds:
-   * patch:
-   *    summary: updates threshold in threshold list
-   *    description: updates a threshold from DSNGIST wqims.lims_thresholds
-   *    tags:
-   *      - Thresholds
+   * /thresholds/{id}:
+   *  patch:
+   *    summary: Update a threshold
+   *    description: Updates a threshold in DSNGIST wqims.thresholds
+   *    tags: 
+   *      - Thresholds 
+   *    parameters:
+   *      - in: path
+   *        name: id
+   *        schema:
+   *          type: string
+   *        required: true
+   *        description: Global ID of the threshold
    *    requestBody:
    *      required: true
    *      content:
    *        application/json:
    *          schema:
-   *            type: object
-   *            items:
-   *              $ref: '#/components/schemas/ThresholdData'
+   *            $ref: '#/components/schemas/ThresholdData'
+   *    responses:
+   *      '200':
+   *        description: Threshold updated successfully
+   *      '502':
+   *        description: Bad Gateway
+   *        content:
+   *          application/json:
+   *            schema:
+   *              type: string
+   *              example: 'Bad Gateway: DB Connection Error'
    */
-  thresholdsRouter.patch('/', async (req, res) => {
-    let connection;
+  thresholdsRouter.patch('/:id', async (req, res) => {
+    let connection: Connection | null = null;
     try {
       connection = await pool.getConnection();
 
+      const globalId = req.params.id;
       const threshold = req.body;
-      const result = await updateThreshold(threshold, connection);
+      const result = await updateThreshold(globalId, threshold, connection);
 
       res.json(result);
     } catch (err) {
@@ -235,7 +243,7 @@ OracleDB.createPool(dbConf)
   });
 })
 
-function getThresholds(connection: any) {
+function getThresholds(connection: Connection) {
   return new Promise((resolve, reject) => {
     connection.execute(
       `SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl}`,
@@ -253,11 +261,11 @@ function getThresholds(connection: any) {
   });
 }
 
-function addThreshold(threshold: any, connection: any) {
+function addThreshold(threshold: any, connection: Connection) {
   return new Promise((resolve, reject) => {
-    // const query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} VALUES (:locCode, :locName, :prjName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :checklistId)`;
-    const test_query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} VALUES (:objectId, :locCode, :locName, :prjName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :checklistId, :globalId)`;
-    /* const bindParams = {
+    const query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} (LOCCODE, LOCATION_NAME, PROJECT_NAME, ANALYSIS, ANALYTE, UPPER_LOWER_SPECS, SPECS_VALUE, ACKTIMEOUT, CLOSEOUTTIMEOUT, CHECKLISTID) VALUES (:locCode, :locName, :prjName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :checklistId)`;
+    // const test_query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} VALUES (:objectId, :locCode, :locName, :prjName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :checklistId, :globalId)`;
+    const bindParams = {
       locCode: threshold.locCode,
       locName: threshold.locName,
       prjName: threshold.prjName,
@@ -268,8 +276,8 @@ function addThreshold(threshold: any, connection: any) {
       ackTimeOut: threshold.ackTimeOut,
       closeOutTimeOut: threshold.closeOutTimeOut,
       checklistId: threshold.checklistId
-    } */
-    const test_bindParams = {
+    }
+    /* const test_bindParams = {
       objectId: threshold.objectId,
       locCode: threshold.locCode,
       locName: threshold.locName,
@@ -282,8 +290,8 @@ function addThreshold(threshold: any, connection: any) {
       closeOutTimeOut: threshold.closeOutTimeOut,
       checklistId: threshold.checklistId,
       globalId: threshold.globalId
-    }
-    /* const options = {
+    } */
+    const options = {
       autoCommit: true,
       bindDefs: [
         {type: OracleDB.STRING, maxSize: 50},
@@ -298,8 +306,8 @@ function addThreshold(threshold: any, connection: any) {
         {type: OracleDB.STRING, maxSize: 38}
       ],
       outFormat: OracleDB.OUT_FORMAT_OBJECT
-    } */
-    const test_options = {
+    }
+    /* const test_options = {
       autoCommit: true,
       bindDefs: [
         {type: OracleDB.NUMBER, maxSize: 38},
@@ -315,11 +323,11 @@ function addThreshold(threshold: any, connection: any) {
         {type: OracleDB.STRING, maxSize: 38},
         {type: OracleDB.STRING, maxSize: 38}
       ]
-    }
+    } */
     connection.execute(
-      test_query,
-      test_bindParams,
-      test_options,
+      query,
+      bindParams,
+      options,
       (err: any, result: any) => {
         if (err) {
           appLogger.error(err);
@@ -332,7 +340,7 @@ function addThreshold(threshold: any, connection: any) {
   });
 }
 
-function deleteThreshold(thresholdId: string, connection: any) {
+function deleteThreshold(thresholdId: string, connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} where GLOBALID=:thresholdId`
     const options = {
@@ -354,7 +362,7 @@ function deleteThreshold(thresholdId: string, connection: any) {
   })
 }
 
-function updateThreshold(threshold: any, connection: any) {
+function updateThreshold(id: string, threshold: any, connection: Connection) {
   return new Promise((resolve, reject) => {
     let query: string = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} set `;
     const bindParams: any = {};
@@ -402,7 +410,7 @@ function updateThreshold(threshold: any, connection: any) {
 
     query = query.slice(0, -2);
 
-    query += ` where GLOBALID=:globalId`;
+    query += ` where GLOBALID=:globalId`; // remove trailing comma
 
     connection.execute(query, { ...bindParams, globalId: threshold.globalId }, { autoCommit: true }, (err: any, result: any) => {
       if (err) {

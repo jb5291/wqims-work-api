@@ -3,26 +3,41 @@ import cors from 'cors';
 import swaggerJSDoc from 'swagger-jsdoc';
 import swaggerUI from 'swagger-ui-express';
 import qs from 'qs';
+import fs from 'fs';
+import http from 'http';
+import https from 'https';
+import cookieParser from 'cookie-parser';
 
-import { appLogger } from './util/appLogger';
+import { MS_CLIENT_ID, MS_SECRET, MS_TENANT_ID, TLS_CERT_INFO, PROXY_LISTEN_PORT, WQIMS_DB_CONFIG } from "./util/secrets";
+import graphHelper from './util/graph';
 import groupsRouter from './routes/groups';
 import usersRouter from './routes/users';
 import thresholdsRouter from "./routes/thresholds";
+import { authRouter } from "./routes/auth";
 
-const PORT = process.env.PORT || 3001;
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: 'https://localhost:4200',
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }))
 app.set('query parser', function(str: string) {
   return qs.parse(str);
 })
+app.use(cookieParser());
+app.set("port", PROXY_LISTEN_PORT || 3001);
+
+graphHelper.initGraphClient({MS_CLIENT_ID, MS_SECRET, MS_TENANT_ID});
 
 app.use('/notificationGroups', groupsRouter);
 app.use('/users', usersRouter);
 app.use('/thresholds', thresholdsRouter);
+app.use('/auth', authRouter);
 
-// swagger jsdoc config
+/** Swagger UI */
+
 const options = { 
   definition: {
     openapi: '3.0.0',
@@ -44,8 +59,28 @@ app.get('/swagger.json', (req, res) => {
 
 app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec));
 
-app.listen(PORT, () => {
-  appLogger.info(`Proxy server running http://localhost:${PORT}`);
-});
+/** Swagger End */
+
+if(TLS_CERT_INFO && TLS_CERT_INFO.type && TLS_CERT_INFO.cert && TLS_CERT_INFO.key){
+  let options: any;
+  if(TLS_CERT_INFO.type === "pfx"){
+      options = {
+          pfx: fs.readFileSync(TLS_CERT_INFO.cert),
+          passphrase: TLS_CERT_INFO.key
+      };
+  }
+  else{
+      options = {
+          key: fs.readFileSync(TLS_CERT_INFO.key),
+          cert: fs.readFileSync(TLS_CERT_INFO.cert)
+        };
+  }
+  https.createServer(options, app).listen(app.get("port"), '0.0.0.0');
+  console.log(`App is running at https://w10-gis05.wssc.ad.root:${app.get("port")} in ${app.get("env")} mode`);
+}
+else{
+  http.createServer(app).listen(app.get("port"), '0.0.0.0');
+  console.log(`App is running at http://w10-gis05.wssc.ad.root:${app.get("port")} in ${app.get("env")} mode`);
+}
 
   
