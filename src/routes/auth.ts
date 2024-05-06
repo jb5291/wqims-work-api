@@ -2,9 +2,10 @@ import express from "express";
 import { AuthorizationCode } from "simple-oauth2";
 import OracleDB, { Connection, autoCommit } from "oracledb";
 import { v4 as uuidv4 } from 'uuid';
+import jwt from 'jsonwebtoken';
 
 import graph from "../util/graph";
-import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG} from "../util/secrets";
+import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG, JWT_SECRET_KEY, BASEURL} from "../util/secrets";
 import { appLogger } from "../util/appLogger";
 
 export const authRouter = express.Router();
@@ -45,19 +46,18 @@ authRouter.get('/callback', async (req, res) => {
 
   const options: any = {
     code,
-    redirect_uri: 'https://w10-gis05.wssc.ad.root:3001/auth/callback',
+    redirect_uri: `${BASEURL}:3001/auth/callback`,
     scope: 'https://graph.microsoft.com/.default'
   }
 
   try {
     const accessToken = await client.getToken(options);
+    const user = await graph.getUserDetails(accessToken.token);
 
-    let user: any = await graph.getUserDetails(accessToken);
-    user = await updateUserPermissions(user)
+    const jwtToken = jwt.sign({ email: user.mail, exp: Math.floor((accessToken.token.expires_at as Date).getTime() / 1000) }, JWT_SECRET_KEY as string);
 
-    res.cookie('token', accessToken.token.access_token, { httpOnly: true, secure: true, sameSite: 'none'})
-
-    OracleDB.createPool(dbConf)
+    res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: 'none' });
+    /* OracleDB.createPool(dbConf)
     .then(pool => {
       const userSession = generateSessionId();
       pool.getConnection((err, conn) => {
@@ -80,11 +80,12 @@ authRouter.get('/callback', async (req, res) => {
           }
         });
       })
-    })
-    res.redirect('https://localhost:4200/accounts');
+    }) */
+    res.redirect(`${BASEURL}:4200/login?success=true`);
   } catch (error) {
-    console.log(error);
+    console.debug(error);
     res.status(500).send(error);
+    res.redirect(`${BASEURL}:4200/login?success=false`);
   }
 })
 
@@ -107,8 +108,8 @@ authRouter.get('/checkAdmin', async (req, res) => {
             result.rows[0].SESSIONINFO.setEncoding('utf8');
             result.rows[0].SESSIONINFO.on('data', (chunk: any) => {
               const sessionInfo = JSON.parse(chunk);
-              if (sessionInfo.tokenExpiresAt < Date.now()) {
-                res.status(403).send('expired token');
+              if (sessionInfo.tokenExpiresAt < (Date.now() / 1000)) {
+                res.status(403).send('Expired token');
               }
               if(sessionInfo.permissions.includes('admin')){
                 res.status(200).send(true);
@@ -150,8 +151,8 @@ authRouter.get('/checkUser', async (req, res) => {
             result.rows[0].SESSIONINFO.setEncoding('utf8');
             result.rows[0].SESSIONINFO.on('data', (chunk: any) => {
               const sessionInfo = JSON.parse(chunk);
-              if(sessionInfo.tokenExpiresAt < Date.now()){
-                res.status(403).send('expired token');
+              if(sessionInfo.tokenExpiresAt < (Date.now() / 1000)){
+                res.status(403).send('Expired token');
               }
               res.status(200).send(sessionInfo.user);
             });
@@ -184,8 +185,8 @@ authRouter.get('/checkToken', async (req, res) => {
             result.rows[0].SESSIONINFO.setEncoding('utf8');
             result.rows[0].SESSIONINFO.on('data', (chunk: any) => {
               const sessionInfo = JSON.parse(chunk);
-              if(sessionInfo.tokenExpiresAt < Date.now()){
-                res.status(403).send('expired token');
+              if(sessionInfo.tokenExpiresAt < (Date.now() / 1000)){
+                res.status(403).send('Expired token');
               }
               else {
                 res.send(true);

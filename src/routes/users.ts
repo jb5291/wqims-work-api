@@ -19,30 +19,30 @@ const dbConf = {
  *    UserData:
  *      type: object
  *      properties:
- *        Name:
+ *        name:
  *          type: string
- *        Department:
+ *        department:
  *          type: string
- *        Division:
+ *        division:
  *          type: string
- *        SupervisorID:
+ *        supervisorID:
  *          type: string
  *          nullable: true
- *        PhoneNumber:
+ *        phoneNumber:
  *          type: string
- *        Email:
+ *        email:
  *          type: string
- *        Role:
+ *        role:
  *          type: string
- *        RapidResponseTeam:
+ *        rapidResponseTeam:
  *           type: integer
- *        MobileCarrier:
+ *        mobileCarrier:
  *           type: string
  *           nullable: true
- *        AltPhoneNumber:
+ *        altPhoneNumber:
  *           type: string
  *           nullable: true
- *        AltMobileCarrier:
+ *        altMobileCarrier:
  *           type: string
  *           nullable: true
  */
@@ -83,7 +83,7 @@ OracleDB.createPool(dbConf)
         return res.status(502).send('DB Connection Error');
       }
 
-      conn.execute(`select * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl}`, [], (err, result) => {
+      conn.execute(`select * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where ACTIVE <> 0`, [], (err, result) => {
         if(err) {
           appLogger.error("Error executing query:", err);
           return res.status(502).send('DB Connection Error');
@@ -126,35 +126,38 @@ OracleDB.createPool(dbConf)
    */    
   usersRouter.put('/', async (req, res) => {
     let connection: Connection | null = null;
-    let userResult: any = {};
+    let result: any;
+    
     try {
       connection = await pool.getConnection();
 
       const user = req.body;
-      const result: any = await addUser(user, connection);
+      const inactiveUser: any = await findInactiveUser(user.email, connection);
 
-      userResult = {
-        name: user.name,
-        department: user.department,
-        phonenumber: user.phonenumber,
-        email: user.email,
-        role: user.role,
-        rapidresponseteam: user.rapidresponseteam,
-        division: user.division,
-        supervisorid: user.supervisorid,
-        mobilecarrier: user.mobilecarrier,
-        altphonenumber: user.altphonenumber,
-        altmobilecarrier: user.altmobilecarrier
+      if(inactiveUser.length > 0) {
+        const InactiveResult: any = await addInactiveUser(inactiveUser[0], connection);
+        if(InactiveResult) [
+          result = {
+            name: InactiveResult.NAME,
+            department: InactiveResult.DEPARTMENT,
+            division: InactiveResult.DIVISION,
+            phonenumber: InactiveResult.PHONENUMBER,
+            email: InactiveResult.EMAIL,
+            role: InactiveResult.ROLE,
+            rapidresponseteam: InactiveResult.RAPIDRESPONSETEAM,
+            mobilecarrier: InactiveResult.MOBILECARRIER,
+            supervisorid: InactiveResult.SUPERVISORID,
+            altphonenumber: InactiveResult.SECONDARYPHONENUMBER,
+            altmobilecarrier: InactiveResult.SECONDARYMOBILECARRIER,
+            GLOBALID: InactiveResult.GLOBALID,
+            OBJECTID: InactiveResult.OBJECTID,
+          }
+        ]
+      } else {
+        result = await addUser(user, connection);
       }
 
-      if(result.hasOwnProperty('outBinds')) {
-        if(result.outBinds.hasOwnProperty('outGid') && result.outBinds.hasOwnProperty('outOid')) {
-          userResult['objectid'] = result.outBinds.outOid[0];
-          userResult['globalid'] = result.outBinds.outGid[0];
-        }
-      }
-
-      res.json(userResult);
+      res.json(result);
     }
     catch (error) {
       appLogger.error(error);
@@ -174,21 +177,21 @@ OracleDB.createPool(dbConf)
   /**
    * @swagger
    * /users/{id}:
-   *  delete:
-   *    summary: Delete a user from wqims.users
-   *    description: Deletes a user from wqims.users based on the provided ID
+   *  post:
+   *    summary: Deactivates a user from wqims.users
+   *    description: Deactivates a user from wqims.users based on the provided ID
    *    tags:
    *      - Users
    *    parameters:
    *      - in: path
    *        name: id
    *        required: true
-   *        description: The ID of the user to delete
+   *        description: The ID of the user to deactivate
    *        schema:
    *          type: string
    *    responses:
    *      '200':
-   *        description: User deleted successfully
+   *        description: User deactivated successfully
    *      '502':
    *        description: Bad Gateway
    *        content:
@@ -197,12 +200,12 @@ OracleDB.createPool(dbConf)
    *              type: string
    *              example: 'Bad Gateway: DB Connection Error'
    */
-  usersRouter.delete('/:id', async (req, res) => {
+  usersRouter.post('/:id', async (req, res) => {
     let connection: Connection | null = null;
     try {
       connection = await pool.getConnection();
       const id = req.params.id;
-      const result = await deleteUser(id, connection);
+      const result = await deactivateUser(id, connection);
 
       res.send(result);
     }
@@ -281,6 +284,11 @@ OracleDB.createPool(dbConf)
       }
     }
   });
+
+  /**
+   * 
+   */
+  usersRouter.put('/:id/roles')
 })
 .catch(error => {
   appLogger.error("Error creating connection pool:", error)
@@ -299,7 +307,7 @@ usersRouter.use('/search', async (req, res) => {
 
 function addUser(user: any, connection: Connection) {
   return new Promise((resolve, reject) => {
-    let query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} (NAME, DEPARTMENT, PHONENUMBER, EMAIL, ROLE, RAPIDRESPONSETEAM, DIVISION, SUPERVISORID, MOBILECARRIER, SECONDARYPHONENUMBER, SECONDARYMOBILECARRIER) values (:name, :department, :phonenumber, :email, :role, :rapidresponseteam, :division, :supervisorid, :mobilecarrier, :altphonenumber, :altmobilecarrier) returning GLOBALID, OBJECTID into :outGid, :outOid`;
+    let query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} (NAME, DEPARTMENT, PHONENUMBER, EMAIL, ROLE, RAPIDRESPONSETEAM, DIVISION, SUPERVISORID, MOBILECARRIER, SECONDARYPHONENUMBER, SECONDARYMOBILECARRIER, ACTIVE) values (:name, :department, :phonenumber, :email, :role, :rapidresponseteam, :division, :supervisorid, :mobilecarrier, :altphonenumber, :altmobilecarrier, 1) returning GLOBALID, OBJECTID into :outGid, :outOid`;
     let bindParams: any = {
       name: user.name ? user.name : 'none',
       department: user.department ? user.department : 'none',
@@ -316,17 +324,17 @@ function addUser(user: any, connection: Connection) {
       outOid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT}
     }
     let bindDefs: any = {
-      name: {type: OracleDB.STRING, maxSize: 128},
-      department: {type: OracleDB.STRING, maxSize: 128},
-      division: {type: OracleDB.STRING, maxSize: 64},
-      phonenumber: {type: OracleDB.STRING, maxSize: 12},
-      email: {type: OracleDB.STRING, maxSize: 128},
-      role: {type: OracleDB.STRING, maxSize: 64},
-      rapidresponseteam: {type: OracleDB.NUMBER, maxSize: 5},
-      mobilecarrier: {type: OracleDB.STRING, maxSize: 25},
-      supervisorid: {type: OracleDB.STRING, maxSize: 38},
-      altphonenumber: {type: OracleDB.STRING, maxSize: 12},
-      altmobilecarrier: {type: OracleDB.STRING, maxSize: 25},
+      NAME: {type: OracleDB.STRING, maxSize: 128},
+      DEPARTMENT: {type: OracleDB.STRING, maxSize: 128},
+      DIVISION: {type: OracleDB.STRING, maxSize: 64},
+      PHONENUMBER: {type: OracleDB.STRING, maxSize: 12},
+      EMAIL: {type: OracleDB.STRING, maxSize: 128},
+      ROLE: {type: OracleDB.STRING, maxSize: 64},
+      RAPIDRESPONSETEAM: {type: OracleDB.NUMBER, maxSize: 5},
+      MOBILECARRIER: {type: OracleDB.STRING, maxSize: 25},
+      SUPERVISORID: {type: OracleDB.STRING, maxSize: 38},
+      ALTPHONENUMBER: {type: OracleDB.STRING, maxSize: 12},
+      ALTMOBILECARRIER: {type: OracleDB.STRING, maxSize: 25},
       outGid: {type: OracleDB.STRING},
       outOid: {type: OracleDB.NUMBER}
     }
@@ -341,14 +349,39 @@ function addUser(user: any, connection: Connection) {
         appLogger.error('Error adding user:', err);
         reject(err);
       }
-      resolve(result);
+      const ids = result.outBinds as any;
+      user.GLOBALID = ids.outGid[0];
+      user.OBJECTID = ids.outOid[0];
+      resolve(user);
     });
   });
 }
 
-function deleteUser(user:any, connection: Connection) {
+function addInactiveUser(user: any, connection: Connection) {
   return new Promise((resolve, reject) => {
-    const query = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where GLOBALID = :id`;
+    let query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} set ACTIVE = 1 where GLOBALID = :id`;
+    let bindParams = {
+      id: user.GLOBALID
+    }
+    let options = {
+      autoCommit: true
+    }
+    connection.execute(query, bindParams, options, (err, result) => {
+      if(err) {
+        appLogger.error('Error adding inactive user:', err);
+        reject(err);
+      }
+      else {
+        user.ACTIVE = 1;
+        resolve(user);
+      }
+    });
+  });
+}
+
+function deactivateUser(id: string, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} set ACTIVE = 0 where GLOBALID = :id `;
     const options = {
       autoCommit: true,
       bindDefs: {
@@ -357,7 +390,7 @@ function deleteUser(user:any, connection: Connection) {
       outFormat: OracleDB.OUT_FORMAT_OBJECT
     }
 
-    connection.execute(query, {id: user}, options, (err, result) => {
+    connection.execute(query, {id: id}, options, (err, result) => {
       if(err) {
         appLogger.error('Error deleting user:', err);
         reject(err);
@@ -440,6 +473,27 @@ function updateUser(id: string, user: any, connection: Connection) {
         reject(err);
       }
       resolve(result);
+    });
+  });
+}
+
+function findInactiveUser(email: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    let query = `select * from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where EMAIL = :email and ACTIVE = 0`;
+    let bindParams = {
+      email: email
+    }
+    let options = {
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+
+    connection.execute(query, bindParams, options, (err, result) => {
+      if(err) {
+        appLogger.error('Error finding inactive user:', err);
+        reject(err);
+      } else {
+        resolve(result.rows);
+      }
     });
   });
 }

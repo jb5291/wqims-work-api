@@ -61,7 +61,7 @@ export default (() => {
   async function getUserDetails(auth: any) {
     const res = await fetch('https://graph.microsoft.com/v1.0/me', {
       headers: {
-        Authorization: `Bearer ${auth.token.access_token}`
+        Authorization: `Bearer ${auth.access_token}`
       }
     });
 

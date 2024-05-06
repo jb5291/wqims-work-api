@@ -36,9 +36,6 @@ function get_env_val(key:string){
 
 export const ENVIRONMENT = process.env.NODE_ENV;
 
-export const REDIS_KEY_DEV = get_env_val("REDIS_KEY_DEV");
-export const REDIS_KEY_PROD = get_env_val("REDIS_KEY_PRD");
-
 export const BASEURL = process.env["BASEURL"] ? process.env["BASEURL"] as string : "";
 
 export const WQIMS_DB_CONFIG = {
@@ -49,12 +46,15 @@ export const WQIMS_DB_CONFIG = {
     notificationGrpsTbl: get_env_val("WQIMS_DB_NOTIF_GRPS"),
     notificationGrpMembersTbl: get_env_val("WQIMS_DB_NOTIF_GRP_MEMBERS"),
     notificationGrpThrshldTbl: get_env_val("WQIMS_DB_NOTIF_GRP_THRSHLD"),
-    thresholdTbl: get_env_val("WQIMS_DB_THRSHLD")
+    thresholdTbl: get_env_val("WQIMS_DB_THRSHLD"),
+    alertsTbl: get_env_val("WQIMS_DB_ALERTS")
 }
 
 export const PORTAL_TOKEN_URL = get_env_val("PORTAL_TOKEN_URL");
 
 export const PROXY_LISTEN_PORT = get_env_val("PORT");
+
+export const JWT_SECRET_KEY = get_env_val("JWT_SECRET_KEY");
 
 export const MS_CLIENT_ID = get_env_val("MS_CLIENT_ID");
 export const MS_SECRET = get_env_val("MS_SECRET");

@@ -17,25 +17,27 @@ const dbConf = {
  *    ThresholdData:
  *      type: object
  *      properties:
- *        locCode:
+ *        LOCCODE:
  *          type: string
- *        locName:
+ *        LOCATION_NAME:
  *          type: string
- *        prjName:
+ *        PROJECT_NAME:
  *          type: string
- *        analysis:
+ *        ANALYSIS:
  *          type: string
- *        analyte:
+ *        ANALYTE:
  *          type: string
- *        specs:
+ *        UPPER_LOWER_SPECS:
  *          type: string
- *        specValue:
+ *        SPECS_VALUE:
  *          type: string
- *        ackTimeOut:
+ *        ACKTIMEOUT:
  *          type: number
- *        closeOutTimeOut:
+ *        CLOSEOUTTIMEOUT:
  *          type: number
- *        checklistId:
+ *        CHECKLISTID:
+ *          type: string
+ *        SYSTEM:
  *          type: string
  */
 
@@ -73,7 +75,15 @@ OracleDB.createPool(dbConf)
     try {
       connection = await pool.getConnection();
 
-      const thresholds = await getThresholds(connection);
+      const thresholds: any = await getActiveThresholds(connection);
+
+      if(thresholds) {
+        thresholds.forEach((threshold: any) => {
+          threshold.ACKTIMEOUT = threshold.ackTimeOut ? parseInt(threshold.ackTimeOut) : 0;
+          threshold.CLOSEOUTTIMEOUT = threshold.closeOutTimeOut ? parseInt(threshold.closeOutTimeOut) : 0;
+          threshold.UPPER_LOWER_SPECS = threshold.UPPER_LOWER_SPECS === 'USPEC' ? 'Upper' : 'Lower';
+        });
+      }
       
       res.json(thresholds);
     } catch (err) {
@@ -104,7 +114,7 @@ OracleDB.createPool(dbConf)
    *          schema:
    *            $ref: '#/components/schemas/ThresholdData'
    *    responses:
-   *      '200':
+   *      '201':
    *        description: Threshold added successfully
    *      '502':
    *        description: Bad Gateway
@@ -116,11 +126,19 @@ OracleDB.createPool(dbConf)
    */
   thresholdsRouter.put('/', async (req, res) => {
     let connection: Connection | null = null;
+    let result;
     try {
       connection = await pool.getConnection();
 
       const threshold = req.body;
-      const result = await addThreshold(threshold, connection);
+      const inactiveThreshold: any = await findInactiveThreshold(threshold, connection);
+
+      if(inactiveThreshold.length > 0) {
+        result = await addInactiveThreshold(inactiveThreshold[0], connection); 
+      }
+      else {
+        result = await addThreshold(threshold, connection);
+      }
 
       res.json(result);
     } catch (err) {
@@ -141,8 +159,8 @@ OracleDB.createPool(dbConf)
    * @swagger
    * /thresholds/{id}:
    *  delete:
-   *    summary: deletes threshold from thresholds list
-   *    description: deletes a threshold from DSNGIST wqims.lims_thresholds
+   *    summary: deactivates threshold from thresholds list
+   *    description: deactivates a threshold from DSNGIST wqims.lims_thresholds
    *    tags: 
    *      - Thresholds
    *    parameters:
@@ -154,7 +172,7 @@ OracleDB.createPool(dbConf)
    *        description: global ID of the threshold
    *    responses:
    *      '200':
-   *        description: Threshold deleted successfully
+   *        description: Threshold deactivated successfully
    *      '502':
    *        description: Bad Gateway
    *        content:
@@ -169,7 +187,7 @@ OracleDB.createPool(dbConf)
       connection = await pool.getConnection();
 
       const thresholdId = req.params.id;
-      const result = await deleteThreshold(thresholdId, connection);
+      const result = await deactivateThreshold(thresholdId, connection);
 
       res.json(result);
     } catch (err) {
@@ -218,14 +236,13 @@ OracleDB.createPool(dbConf)
    *              type: string
    *              example: 'Bad Gateway: DB Connection Error'
    */
-  thresholdsRouter.patch('/:id', async (req, res) => {
+  thresholdsRouter.patch('/', async (req, res) => {
     let connection: Connection | null = null;
     try {
       connection = await pool.getConnection();
 
-      const globalId = req.params.id;
       const threshold = req.body;
-      const result = await updateThreshold(globalId, threshold, connection);
+      const result = await updateThreshold(threshold, connection);
 
       res.json(result);
     } catch (err) {
@@ -243,10 +260,10 @@ OracleDB.createPool(dbConf)
   });
 })
 
-function getThresholds(connection: Connection) {
+function getActiveThresholds(connection: Connection) {
   return new Promise((resolve, reject) => {
     connection.execute(
-      `SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl}`,
+      `SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} where SPECS_VALUE is not null and ACTIVE <> 0`,
       [],
       { outFormat: OracleDB.OUT_FORMAT_OBJECT },
       (err: any, result: any) => {
@@ -261,21 +278,74 @@ function getThresholds(connection: Connection) {
   });
 }
 
+function findInactiveThreshold(threshold: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    connection.execute(
+      `SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} where SPECS_VALUE is not null and ACTIVE = 0 and LOCCODE=:loccode and ANALYSIS=:analysis`,
+      [
+        threshold.LOCCODE,
+        threshold.ANALYSIS
+      ],
+      { outFormat: OracleDB.OUT_FORMAT_OBJECT },
+      (err: any, result: any) => {
+        if (err) {
+          appLogger.error(err);
+          reject(err);
+        } else {
+          resolve(result.rows);
+        }
+      }
+    );
+  });
+}
+
+function addInactiveThreshold(threshold: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} set ACTIVE=1 where GLOBALID=:globalid`;
+    const options = {
+      autoCommit: true,
+      bindDefs: [
+        {type: OracleDB.STRING, maxSize: 50}
+      ],
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, 
+      { 
+        globalid: threshold.GLOBALID
+      }, 
+      options, (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        threshold.ACTIVE = 1;
+        resolve(threshold);
+      }
+    })
+  });
+}
+
 function addThreshold(threshold: any, connection: Connection) {
   return new Promise((resolve, reject) => {
-    const query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} (LOCCODE, LOCATION_NAME, PROJECT_NAME, ANALYSIS, ANALYTE, UPPER_LOWER_SPECS, SPECS_VALUE, ACKTIMEOUT, CLOSEOUTTIMEOUT, CHECKLISTID) VALUES (:locCode, :locName, :prjName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :checklistId)`;
+    // taking out project name and checklist ID
+    const query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} (LOCCODE, LOCATION_NAME, ANALYSIS, ANALYTE, UPPER_LOWER_SPECS, SPECS_VALUE, ACKTIMEOUT, CLOSEOUTTIMEOUT, SYSTEM, ACTIVE) VALUES (:locCode, :locName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :system, :active) returning GLOBALID, OBJECTID into :outGid, :outOid`;
     // const test_query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} VALUES (:objectId, :locCode, :locName, :prjName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :checklistId, :globalId)`;
     const bindParams = {
-      locCode: threshold.locCode,
-      locName: threshold.locName,
-      prjName: threshold.prjName,
-      analysis: threshold.analysis,
-      analyte: threshold.analyte,
-      specs: threshold.specs,
-      specValue: threshold.specValue,
-      ackTimeOut: threshold.ackTimeOut,
-      closeOutTimeOut: threshold.closeOutTimeOut,
-      checklistId: threshold.checklistId
+      locCode: threshold.LOCCODE,
+      locName: threshold.LOCATION_NAME,
+      //prjName: threshold.PROJECT_NAME,
+      analysis: threshold.ANALYSIS,
+      analyte: threshold.ANALYTE,
+      specs: threshold.UPPER_LOWER_SPECS,
+      specValue: threshold.SPECS_VALUE,
+      ackTimeOut: threshold.ACKTIMEOUT,
+      closeOutTimeOut: threshold.CLOSEOUTTIMEOUT,
+      //checklistId: threshold.CHECKLISTID,
+      system: threshold.SYSTEM,
+      active: 1,
+      outGid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
+      outOid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT}
     }
     /* const test_bindParams = {
       objectId: threshold.objectId,
@@ -296,14 +366,15 @@ function addThreshold(threshold: any, connection: Connection) {
       bindDefs: [
         {type: OracleDB.STRING, maxSize: 50},
         {type: OracleDB.STRING, maxSize: 50},
-        {type: OracleDB.STRING, maxSize: 50},
+        //{type: OracleDB.STRING, maxSize: 50},
         {type: OracleDB.STRING, maxSize: 50},
         {type: OracleDB.STRING, maxSize: 50},
         {type: OracleDB.STRING, maxSize: 50},
         {type: OracleDB.STRING, maxSize: 50},
         {type: OracleDB.NUMBER, maxSize: 5},
         {type: OracleDB.NUMBER, maxSize: 5},
-        {type: OracleDB.STRING, maxSize: 38}
+        //{type: OracleDB.STRING, maxSize: 38},
+        {type: OracleDB.NUMBER, maxSize: 1}
       ],
       outFormat: OracleDB.OUT_FORMAT_OBJECT
     }
@@ -333,16 +404,19 @@ function addThreshold(threshold: any, connection: Connection) {
           appLogger.error(err);
           reject(err);
         } else {
-          resolve(result.rows);
+          const ids = result.outBinds as any;
+          threshold.GLOBALID = ids.outGid[0];
+          threshold.OBJECTID = ids.outOid[0];
+          resolve(threshold);
         }
       }
     );
   });
 }
 
-function deleteThreshold(thresholdId: string, connection: Connection) {
+function deactivateThreshold(thresholdId: string, connection: Connection) {
   return new Promise((resolve, reject) => {
-    const query = `delete from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} where GLOBALID=:thresholdId`
+    const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} set ACTIVE=0 where GLOBALID=:thresholdId`
     const options = {
       autoCommit: true,
       bindDefs: [
@@ -362,57 +436,61 @@ function deleteThreshold(thresholdId: string, connection: Connection) {
   })
 }
 
-function updateThreshold(id: string, threshold: any, connection: Connection) {
+function updateThreshold(threshold: any, connection: Connection) {
   return new Promise((resolve, reject) => {
     let query: string = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} set `;
     const bindParams: any = {};
 
-    if (threshold.locCode) {
-      query += `LOCCODE=:locCode, `;
-      bindParams.locCode = threshold.locCode;
+    if (threshold.LOCCODE) {
+      query += `LOCCODE=:LOCCODE, `;
+      bindParams.LOCCODE = threshold.LOCCODE;
     }
-    if (threshold.locName) {
-      query += `LOCATION_NAME=:locName, `;
-      bindParams.locName = threshold.locName;
+    if(threshold.SYSTEM) {
+      query += `SYSTEM=:SYSTEM, `;
+      bindParams.SYSTEM = threshold.SYSTEM;
     }
-    if (threshold.prjName) {
-      query += `PROJECT_NAME=:prjName, `;
-      bindParams.prjName = threshold.prjName;
+    if (threshold.LOCATION_NAME) {
+      query += `LOCATION_NAME=:LOCATION_NAME, `;
+      bindParams.LOCATION_NAME = threshold.LOCATION_NAME;
     }
-    if (threshold.analysis) {
-      query += `ANALYSIS=:analysis, `;
-      bindParams.analysis = threshold.analysis;
+    if (threshold.PROJECT_NAME) {
+      query += `PROJECT_NAME=:PROJECT_NAME, `;
+      bindParams.PROJECT_NAME = threshold.PROJECT_NAME;
     }
-    if (threshold.analyte) {
-      query += `ANALYTE=:analyte, `;
-      bindParams.analyte = threshold.analyte;
+    if (threshold.ANALYSIS) {
+      query += `ANALYSIS=:ANALYSIS, `;
+      bindParams.ANALYSIS = threshold.ANALYSIS;
     }
-    if (threshold.specs) {
-      query += `UPPER_LOWER_SPECS=:specs, `;
-      bindParams.specs = threshold.specs;
+    if (threshold.ANALYTE) {
+      query += `ANALYTE=:ANALYTE, `;
+      bindParams.ANALYTE = threshold.ANALYTE;
     }
-    if (threshold.specValue) {
-      query += `SPECS_VALUE=:specValue, `;
-      bindParams.specValue = threshold.specValue;
+    if (threshold.UPPER_LOWER_SPECS) {
+      query += `UPPER_LOWER_SPECS=:UPPER_LOWER_SPECS, `;
+      bindParams.UPPER_LOWER_SPECS = threshold.UPPER_LOWER_SPECS;
     }
-    if (threshold.ackTimeOut) {
-      query += `ACKTIMEOUT=:ackTimeOut, `;
-      bindParams.ackTimeOut = threshold.ackTimeOut;
+    if (threshold.SPECS_VALUE) {
+      query += `SPECS_VALUE=:SPECS_VALUE, `;
+      bindParams.SPECS_VALUE = threshold.SPECS_VALUE;
     }
-    if (threshold.closeOutTimeOut) {
-      query += `CLOSEOUTTIMEOUT=:closeOutTimeOut, `;
-      bindParams.closeOutTimeOut = threshold.closeOutTimeOut;
+    if (threshold.ACKTIMEOUT) {
+      query += `ACKTIMEOUT=:ACKTIMEOUT, `;
+      bindParams.ACKTIMEOUT = threshold.ACKTIMEOUT;
     }
-    if (threshold.checklistId) {
-      query += `CHECKLISTID=:checklistId, `;
-      bindParams.checklistId = threshold.checklistId;
+    if (threshold.CLOSEOUTTIMEOUT) {
+      query += `CLOSEOUTTIMEOUT=:CLOSEOUTTIMEOUT, `;
+      bindParams.CLOSEOUTTIMEOUT = threshold.CLOSEOUTTIMEOUT;
+    }
+    if (threshold.CHECKLISTID) {
+      query += `CHECKLISTID=:CHECKLISTID, `;
+      bindParams.CHECKLISTID = threshold.CHECKLISTID;
     }
 
     query = query.slice(0, -2);
 
     query += ` where GLOBALID=:globalId`; // remove trailing comma
 
-    connection.execute(query, { ...bindParams, globalId: threshold.globalId }, { autoCommit: true }, (err: any, result: any) => {
+    connection.execute(query, { ...bindParams, globalId: threshold.GLOBALID }, { autoCommit: true }, (err: any, result: any) => {
       if (err) {
         appLogger.error("Error executing query:", err);
         reject(err);
