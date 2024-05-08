@@ -89,7 +89,7 @@ OracleDB.createPool(dbConf)
     try {
       connection = await pool.getConnection();
 
-      jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
+      /* jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
         if (err) {
           appLogger.error(err);
           res.status(401).send('Unauthorized');
@@ -97,19 +97,35 @@ OracleDB.createPool(dbConf)
         else {
           userEmail = decoded.email;
         }
-      });
+      }); */
 
-      if(userEmail !== '') {
-        const userIdResult: any = await connection.execute(
-          `SELECT globalid from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where email = :email`,
-          [userEmail],
-          { outFormat: OracleDB.OUT_FORMAT_OBJECT }
-        )
-        const userId = userIdResult.rows[0].GLOBALID;
-        const userGroupIds: any = await getUserGroupIds(connection, userId); 
-      }
+      //if(userEmail !== '') {
+        // const userIdResult: any = await connection.execute(
+        //   `SELECT globalid from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl}`, [],
+        //   { outFormat: OracleDB.OUT_FORMAT_OBJECT }
+        // )
+        // const userId = userIdResult.rows[0].GLOBALID;
+        // const userGroupIds: any = await getUserGroupIds(connection, userId); 
+      //}
       const result = await connection.execute(
-        `SELECT OBJECTID, GLOBALID, SAMPLENUM, LOCATION, COLLECTDATE, SAMPLECOLLECTOR, ACODE, ANALYSEDDATE, ANALYSEDBY, ADDR1, ADDR5, GEOCODEMATCHEDADDRESS, RESULT, LOCOCODE, WARNING_STATUS, ANALYTE FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl}`,
+        `SELECT 
+          OBJECTID, 
+          GLOBALID, 
+          SAMPLENUM, 
+          LOCATION, 
+          COLLECTDATE, 
+          SAMPLECOLLECTOR, 
+          ACODE, 
+          ANALYSEDDATE, 
+          ANALYSEDBY, 
+          ADDR1, 
+          ADDR5, 
+          GEOCODEMATCHEDADDRESS, 
+          RESULT, 
+          LOCOCODE, 
+          WARNING_STATUS, 
+          ANALYTE 
+          FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl}`,
         [],
         { outFormat: OracleDB.OUT_FORMAT_OBJECT }
       );
