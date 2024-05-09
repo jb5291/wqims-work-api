@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET_KEY, WQIMS_DB_CONFIG } from '../util/secrets';
 import { appLogger } from '../util/appLogger';
 import cookieParser from 'cookie-parser';
+import { getIdFromEmail } from './auth';
 
 const alertsRouter = express.Router();
 const dbConf = {
@@ -86,10 +87,11 @@ OracleDB.createPool(dbConf)
   alertsRouter.get('/', async (req, res) => {
     let connection: Connection | null = null;
     let userEmail: string = '';
+    let result: any = null;
     try {
       connection = await pool.getConnection();
 
-      /* jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
+      jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
         if (err) {
           appLogger.error(err);
           res.status(401).send('Unauthorized');
@@ -97,39 +99,23 @@ OracleDB.createPool(dbConf)
         else {
           userEmail = decoded.email;
         }
-      }); */
+      });
+      const userId = await getIdFromEmail(userEmail, connection);
+      if(userId === undefined) {
+        res.sendStatus(401);
+      }
+      const groupIds: any = await getUserGroupIds(connection, userId);
+      if(groupIds.length > 0) {
+        const thresholdIds: any = await getThresholdIdsFromGroupIds(groupIds.map((g:any) => g.GROUP_ID), connection);
+        const thresholds: any = await getThresholdsFromThresholdIds(thresholdIds.map((t:any) => t.THRSHLD_ID), connection);
 
-      //if(userEmail !== '') {
-        // const userIdResult: any = await connection.execute(
-        //   `SELECT globalid from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl}`, [],
-        //   { outFormat: OracleDB.OUT_FORMAT_OBJECT }
-        // )
-        // const userId = userIdResult.rows[0].GLOBALID;
-        // const userGroupIds: any = await getUserGroupIds(connection, userId); 
-      //}
-      const result = await connection.execute(
-        `SELECT 
-          OBJECTID, 
-          GLOBALID, 
-          SAMPLENUM, 
-          LOCATION, 
-          COLLECTDATE, 
-          SAMPLECOLLECTOR, 
-          ACODE, 
-          ANALYSEDDATE, 
-          ANALYSEDBY, 
-          ADDR1, 
-          ADDR5, 
-          GEOCODEMATCHEDADDRESS, 
-          RESULT, 
-          LOCOCODE, 
-          WARNING_STATUS, 
-          ANALYTE 
-          FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl}`,
-        [],
-        { outFormat: OracleDB.OUT_FORMAT_OBJECT }
-      );
-      res.json(result.rows);
+        const threshold_acode_loccode = thresholds.map((t:any) => [t.ANALYSIS, t.LOCCODE]);
+        result = await getAlertsFromThresholds(threshold_acode_loccode, connection);
+        res.json(result.rows);
+      }
+      else {
+        res.sendStatus(204);
+      }
     } catch (err) {
       appLogger.error(err);
       res.status(500).send('Error getting alerts');
@@ -178,7 +164,7 @@ OracleDB.createPool(dbConf)
 function getUserGroupIds(connection: Connection, userId: string) {
   return new Promise((resolve, reject) => {
     connection.execute(
-      `SELECT GROUPID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} WHERE USERID = :userId`,
+      `SELECT GROUP_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} WHERE USER_ID = :userId`,
       [userId],
       { outFormat: OracleDB.OUT_FORMAT_OBJECT },
       (err, result) => {
@@ -192,6 +178,68 @@ function getUserGroupIds(connection: Connection, userId: string) {
       }
     )
   });
+}
+
+function getThresholdIdsFromGroupIds(groupIds: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const binds: any = {}
+    const placeholder: any = groupIds.map((_:any,i:number) => `:id${i}`).join(',');
+    groupIds.forEach((g: any, i: number) => {
+      binds[`id${i}`] = g;
+    })
+    const query = `SELECT THRSHLD_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} WHERE GROUP_ID IN (${placeholder}) AND ACTIVE = 1`
+    connection.execute(query, binds, { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
+      if(err) {
+        appLogger.error(err);
+        reject(err);
+      }
+      else {
+        resolve(result.rows);
+      }
+    })
+  });
+}
+
+function getThresholdsFromThresholdIds(thresholdIds: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const binds: any = {}
+    const placeholder: any = thresholdIds.map((_:any,i:number) => `:id${i}`).join(',');
+    thresholdIds.forEach((t: any, i: number) => {
+      binds[`id${i}`] = t;
+    })
+    const query = `SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} WHERE GLOBALID IN (${placeholder}) AND ACTIVE = 1`;
+    connection.execute(query, binds, { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
+        if(err) {
+          appLogger.error(err);
+          reject(err);
+        }
+        else {
+          resolve(result.rows);
+        }
+      }
+    )
+  });
+}
+
+function getAlertsFromThresholds(thresholds: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const placeholders = thresholds.map((t: any, i: number) => `(:acode${i}, :loccode${i})`).join(',');
+    const binds: any = {}
+    thresholds.forEach(([acode, loccode]: string[] , i: number) => {
+      binds[`acode${i}`] = acode;
+      binds[`loccode${i}`] = loccode;
+    })
+    const query = `SELECT OBJECTID, GLOBALID, SAMPLENUM, LOCATION, COLLECTDATE, SAMPLECOLLECTOR, ACODE, ANALYSEDDATE, ANALYSEDBY, ADDR1, ADDR5, GEOCODEMATCHEDADDRESS, RESULT, LOCOCODE, WARNING_STATUS, ANALYTE FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} WHERE (ACODE, LOCOCODE) in (${placeholders})`;
+    connection.execute(query, binds, { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
+      if(err) {
+        appLogger.error(err);
+        reject(err);
+      }
+      else {
+        resolve(result);
+      }
+    })
+  })
 }
 
 export default alertsRouter;

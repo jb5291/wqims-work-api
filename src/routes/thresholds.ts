@@ -188,6 +188,7 @@ OracleDB.createPool(dbConf)
 
       const thresholdId = req.params.id;
       const result = await deactivateThreshold(thresholdId, connection);
+      await deactivateGroupThresholds(thresholdId, connection);
 
       res.json(result);
     } catch (err) {
@@ -496,6 +497,28 @@ function updateThreshold(threshold: any, connection: Connection) {
         reject(err);
       } else {
         resolve(result);
+      }
+    });
+  })
+}
+
+function deactivateGroupThresholds(thresholdId: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} set ACTIVE=0 where THRESHOLDID=:thresholdId`
+    const options = {
+      autoCommit: true,
+      bindDefs: [
+        {type: OracleDB.STRING, maxSize: 38}
+      ],
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, { thresholdId: thresholdId }, options, (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        resolve(result)
       }
     });
   })

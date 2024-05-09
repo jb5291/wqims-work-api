@@ -8,7 +8,7 @@ import http from 'http';
 import https from 'https';
 import cookieParser from 'cookie-parser';
 
-import { MS_CLIENT_ID, MS_SECRET, MS_TENANT_ID, TLS_CERT_INFO, PROXY_LISTEN_PORT, WQIMS_DB_CONFIG, BASEURL } from "./util/secrets";
+import { MS_CLIENT_ID, MS_SECRET, MS_TENANT_ID, TLS_CERT_INFO, PROXY_LISTEN_PORT, FE_LISTEN_PORT, WQIMS_DB_CONFIG, BASEURL } from "./util/secrets";
 import graphHelper from './util/graph';
 import groupsRouter from './routes/groups';
 import usersRouter from './routes/users';
@@ -19,7 +19,7 @@ import { authRouter } from "./routes/auth";
 const app = express();
 
 app.use(cors({
-  origin: `${BASEURL}:4200`,
+  origin: `${BASEURL}:${FE_LISTEN_PORT}`,
   credentials: true
 }));
 app.use(express.json());

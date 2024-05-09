@@ -1,7 +1,8 @@
 import express from 'express';
-import OracleDB, { Connection } from 'oracledb';
+import OracleDB, { Connection, autoCommit } from 'oracledb';
+import jwt from 'jsonwebtoken';
 
-import { WQIMS_DB_CONFIG } from "../util/secrets";
+import { JWT_SECRET_KEY, WQIMS_DB_CONFIG } from "../util/secrets";
 import { appLogger } from '../util/appLogger';
 import graphHelper from '../util/graph';
 
@@ -135,29 +136,23 @@ OracleDB.createPool(dbConf)
       const inactiveUser: any = await findInactiveUser(user.email, connection);
 
       if(inactiveUser.length > 0) {
-        const InactiveResult: any = await addInactiveUser(inactiveUser[0], connection);
-        if(InactiveResult) [
-          result = {
-            name: InactiveResult.NAME,
-            department: InactiveResult.DEPARTMENT,
-            division: InactiveResult.DIVISION,
-            phonenumber: InactiveResult.PHONENUMBER,
-            email: InactiveResult.EMAIL,
-            role: InactiveResult.ROLE,
-            rapidresponseteam: InactiveResult.RAPIDRESPONSETEAM,
-            mobilecarrier: InactiveResult.MOBILECARRIER,
-            supervisorid: InactiveResult.SUPERVISORID,
-            altphonenumber: InactiveResult.SECONDARYPHONENUMBER,
-            altmobilecarrier: InactiveResult.SECONDARYMOBILECARRIER,
-            GLOBALID: InactiveResult.GLOBALID,
-            OBJECTID: InactiveResult.OBJECTID,
-          }
-        ]
+        user.GLOBALID = inactiveUser[0].GLOBALID;
+        user.OBJECTID = inactiveUser[0].OBJECTID;
+        result = await addInactiveUser(user, connection);
+        if(inactiveUser[0].ROLE !== user.role.toLowerCase()) {
+          const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
+          await editAddInactiveUserRole(inactiveUser[0].GLOBALID, roleId, connection);
+        }
+        else {
+          await addInactiveUserRole(inactiveUser[0].GLOBALID, connection);
+        }
       } else {
         result = await addUser(user, connection);
+        const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
+        await addUserRole(result.GLOBALID, roleId, connection);
       }
-
       res.json(result);
+
     }
     catch (error) {
       appLogger.error(error);
@@ -206,6 +201,7 @@ OracleDB.createPool(dbConf)
       connection = await pool.getConnection();
       const id = req.params.id;
       const result = await deactivateUser(id, connection);
+      await deactivateGroupUser(id, connection);
 
       res.send(result);
     }
@@ -267,7 +263,8 @@ OracleDB.createPool(dbConf)
       const id = req.params.id;
       const user = req.body;
       const result = await updateUser(id, user, connection);
-
+      const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
+      await updateUserRole(id, roleId, connection);
       res.send(result);
     }
     catch (error) {
@@ -357,14 +354,113 @@ function addUser(user: any, connection: Connection) {
   });
 }
 
+function getRoleId(role: string, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `select ROLE_ID from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.rolesTbl} where ROLE = :role`;
+    const options = {
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+
+    connection.execute(query, {role: role}, options, (err, result: any) => {
+      if(err) {
+        appLogger.error('Error getting role ID:', err);
+        reject(err);
+      }
+      else {
+        if(typeof result !== 'undefined')
+          resolve(result.rows[0].ROLE_ID);
+      }
+    });
+  });
+}
+
+function addUserRole(userId: string, roleId: string, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} (USER_ID, ROLE_ID) values (:userId, :roleId)`;
+    const options = {
+      autoCommit: true,
+      bindDefs: {
+        userId: {type: OracleDB.STRING},
+        roleId: {type: OracleDB.STRING}
+      },
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, {userId: userId, roleId: roleId}, options, (err, result) => {
+      if(err) {
+        appLogger.error('Error adding user role:', err);
+        reject(err);
+      }
+      else {
+        resolve(result);
+      }
+    })
+  });
+}
+  
+
 function addInactiveUser(user: any, connection: Connection) {
   return new Promise((resolve, reject) => {
-    let query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} set ACTIVE = 1 where GLOBALID = :id`;
-    let bindParams = {
+    let query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} set ACTIVE = 1, `;
+    let bindParams: any = {
       id: user.GLOBALID
     }
-    let options = {
-      autoCommit: true
+    let bindDefs: any = {}
+    if(user.name) {
+      query += 'NAME = :name, ';
+      bindParams['name'] = user.name;
+      bindDefs['name'] = {type: OracleDB.STRING, maxSize: 128};
+    }
+    if(user.department) {
+      query += 'DEPARTMENT = :department, ';
+      bindParams['department'] = user.department;
+      bindDefs['department'] = {type: OracleDB.STRING, maxSize: 128};
+    }
+    if(user.division) {
+      query += 'DIVISION = :division, ';
+      bindParams['division'] = user.division;
+      bindDefs['division'] = {type: OracleDB.STRING, maxSize: 128};
+    }
+    if(user.phonenumber) {
+      query += 'PHONENUMBER = :phonenumber, ';
+      bindParams['phonenumber'] = user.phonenumber;
+      bindDefs['phonenumber'] = {type: OracleDB.STRING, maxSize: 12};
+    }
+    if(user.email) {
+      query += 'EMAIL = :email, ';
+      bindParams['email'] = user.email;
+      bindDefs['email'] = {type: OracleDB.STRING, maxSize: 128};
+    }
+    if(user.role) {
+      query += 'ROLE = :role, ';
+      bindParams['role'] = user.role;
+      bindDefs['role'] = {type: OracleDB.STRING, maxSize: 64};
+    }
+    if(user.mobilecarrier) {
+      query += 'MOBILECARRIER = :mobilecarrier, ';
+      bindParams['mobilecarrier'] = user.mobilecarrier;
+      bindDefs['mobilecarrier'] = {type: OracleDB.STRING, maxSize: 25};
+    }
+    if(user.altphonenumber) {
+      query += 'SECONDARYPHONENUMBER = :altphonenumber, ';
+      bindParams['altphonenumber'] = user.altphonenumber;
+      bindDefs['altphonenumber'] = {type: OracleDB.STRING, maxSize: 12};
+    }
+    if(user.altmobilecarrier) {
+      query += 'SECONDARYMOBILECARRIER = :altmobilecarrier, ';
+      bindParams['altmobilecarrier'] = user.altmobilecarrier;
+      bindDefs['altmobilecarrier'] = {type: OracleDB.STRING, maxSize: 25};
+    }
+    if(user.rapidresponseteam) {
+      query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
+      bindParams['rapidresponseteam'] = user.rapidresponseteam;
+      bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
+    }
+    query = query.slice(0, -2); // remove trailing comma
+    query +=  ` where GLOBALID = :id`;
+    const options = {
+      autoCommit: true,
+      bindDefs: bindDefs,
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
     }
     connection.execute(query, bindParams, options, (err, result) => {
       if(err) {
@@ -377,6 +473,51 @@ function addInactiveUser(user: any, connection: Connection) {
       }
     });
   });
+}
+
+function addInactiveUserRole(userId: string, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} set ACTIVE = 1 where USER_ID = :userId`;
+    const options = {
+      autoCommit: true,
+      bindDefs: {
+        userId: {type: OracleDB.STRING}
+      },
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, {userId: userId}, options, (err, result) => {
+      if(err) {
+        appLogger.error('Error adding inactive user role:', err);
+        reject(err);
+      }
+      else {
+        resolve(result);
+      }
+    });
+  });
+}
+
+function editAddInactiveUserRole(userId: string, newRoleId: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} set ACTIVE = 1, ROLE_ID = :newRoleId where USER_ID = :userId`;
+    const options = {
+      autoCommit: true,
+      bindDefs: {
+        userId: {type: OracleDB.STRING},
+        newRoleId: {type: OracleDB.STRING}
+      },
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, {userId: userId, newRoleId: newRoleId}, options, (err, result) => {
+      if(err) {
+        appLogger.error('Error updating inactive user role:', err);
+        reject(err);
+      }
+      else {
+        resolve(result);
+      }
+    })
+  })
 }
 
 function deactivateUser(id: string, connection: Connection) {
@@ -477,6 +618,29 @@ function updateUser(id: string, user: any, connection: Connection) {
   });
 }
 
+function updateUserRole(userId: string, roleId: string, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} set ROLE_ID = :roleId where USER_ID = :userId`;
+    const options = {
+      autoCommit: true,
+      bindDefs: {
+        userId: {type: OracleDB.STRING},
+        roleId: {type: OracleDB.STRING}
+      },
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, {userId: userId, roleId: roleId}, options, (err, result) => {
+      if(err) {
+        appLogger.error('Error updating user role:', err);
+        reject(err);
+      }
+      else {
+        resolve(result);
+      }
+    })
+  });
+}
+
 function findInactiveUser(email: any, connection: Connection) {
   return new Promise((resolve, reject) => {
     let query = `select * from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where EMAIL = :email and ACTIVE = 0`;
@@ -496,6 +660,28 @@ function findInactiveUser(email: any, connection: Connection) {
       }
     });
   });
+}
+
+function deactivateGroupUser(userId: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} set ACTIVE = 0 where USER_ID = :userId`;
+    const options = {
+      autoCommit: true,
+      bindDefs: {
+        userId: {type: OracleDB.STRING}
+      },
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, {userId: userId}, options, (err, result) => {
+      if(err) {
+        appLogger.error(err)
+        reject(err);
+      }
+      else {
+        resolve(result)
+      }
+    })
+  })
 }
 
 export default usersRouter;

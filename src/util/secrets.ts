@@ -47,12 +47,15 @@ export const WQIMS_DB_CONFIG = {
     notificationGrpMembersTbl: get_env_val("WQIMS_DB_NOTIF_GRP_MEMBERS"),
     notificationGrpThrshldTbl: get_env_val("WQIMS_DB_NOTIF_GRP_THRSHLD"),
     thresholdTbl: get_env_val("WQIMS_DB_THRSHLD"),
-    alertsTbl: get_env_val("WQIMS_DB_ALERTS")
+    alertsTbl: get_env_val("WQIMS_DB_ALERTS"),
+    userRolesTbl: get_env_val("WQIMS_DB_USER_ROLES"),
+    rolesTbl: get_env_val("WQIMS_DB_ROLES"),
 }
 
 export const PORTAL_TOKEN_URL = get_env_val("PORTAL_TOKEN_URL");
 
 export const PROXY_LISTEN_PORT = get_env_val("PORT");
+export const FE_LISTEN_PORT = get_env_val("FE_PORT");
 
 export const JWT_SECRET_KEY = get_env_val("JWT_SECRET_KEY");
 

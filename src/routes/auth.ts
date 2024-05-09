@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 
 import graph from "../util/graph";
-import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG, JWT_SECRET_KEY, BASEURL} from "../util/secrets";
+import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG, JWT_SECRET_KEY, BASEURL, PROXY_LISTEN_PORT, FE_LISTEN_PORT} from "../util/secrets";
 import { appLogger } from "../util/appLogger";
 
 export const authRouter = express.Router();
@@ -35,7 +35,7 @@ function generateSessionId() {
 
 authRouter.get('/login', (req, res) => {
   const authorizationUri = client.authorizeURL({
-    redirect_uri: 'https://w10-gis05.wssc.ad.root:3001/auth/callback',
+    redirect_uri: `${BASEURL}:${PROXY_LISTEN_PORT}/auth/callback`,
     scope: 'https://graph.microsoft.com/.default'
   });
   res.redirect(authorizationUri);
@@ -46,7 +46,7 @@ authRouter.get('/callback', async (req, res) => {
 
   const options: any = {
     code,
-    redirect_uri: `${BASEURL}:3001/auth/callback`,
+    redirect_uri: `${BASEURL}:${PROXY_LISTEN_PORT}/auth/callback`,
     scope: 'https://graph.microsoft.com/.default'
   }
 
@@ -81,164 +81,130 @@ authRouter.get('/callback', async (req, res) => {
         });
       })
     }) */
-    res.redirect(`${BASEURL}:4200/login?success=true`);
+    res.redirect(`${BASEURL}:${FE_LISTEN_PORT}/login?success=true`);
   } catch (error) {
     console.debug(error);
     res.status(500).send(error);
-    res.redirect(`${BASEURL}:4200/login?success=false`);
+    res.redirect(`${BASEURL}:${FE_LISTEN_PORT}/login?success=false`);
   }
 })
 
-authRouter.get('/checkAdmin', async (req, res) => {
-  const token = req.cookies.token;
-  OracleDB.createPool(dbConf)
-  .then(pool => {
-    pool.getConnection((err, conn) => {
-      if(err) {
-        appLogger.error(`Error getting connection from pool: ${err.message}`)
-        return;
-      }
-      conn.execute(`select SESSIONINFO from user_sessions where accessToken = :token`, [token], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result: any) => {
-        if(err){
-          appLogger.error(`Error getting session info from database: ${err.message}`)
-          return;
-        }
-        if(result.rows) {
-          if(result.rows.length > 0) {
-            result.rows[0].SESSIONINFO.setEncoding('utf8');
-            result.rows[0].SESSIONINFO.on('data', (chunk: any) => {
-              const sessionInfo = JSON.parse(chunk);
-              if (sessionInfo.tokenExpiresAt < (Date.now() / 1000)) {
-                res.status(403).send('Expired token');
-              }
-              if(sessionInfo.permissions.includes('admin')){
-                res.status(200).send(true);
-              } else {
-                res.status(403).send('Insufficient permissions');
-              }
-            })
-          } else {
-            res.status(403).send('User not found');
-          }
-        }
-      })
-      conn.release((err) => {
-        if(err){
-          appLogger.error(`Error releasing connection: ${err.message}`)
-          return;
-        }
-      });
-    })
-  })
-})
+OracleDB.createPool(dbConf)
+.then(pool => {
+  appLogger.info('Connection pool created for checking role permissions');
 
-authRouter.get('/checkUser', async (req, res) => {
-  const token = req.cookies.token;
-  OracleDB.createPool(dbConf)
-  .then(pool => {
-    pool.getConnection((err, conn) => {
-      if(err) {
-        appLogger.error(`Error getting connection from pool: ${err.message}`)
-        return;
-      }
-      conn.execute(`select sessionInfo from user_sessions where accessToken = :token`, [token], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result: any) => {
-        if(err){
-          appLogger.error(`Error getting session info from database: ${err.message}`)
-          return;
+  authRouter.get('/checkPermissions', async (req, res) => {
+    let userEmail = '';
+    let connection: Connection | null = null;
+    const action: string = req.query.action as string;
+    try {
+      jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
+        if(err) {
+          appLogger.error(err);
+          res.status(401).send('Unauthorized');
         }
-        if(result.rows) {
-          if(result.rows.length > 0){
-            result.rows[0].SESSIONINFO.setEncoding('utf8');
-            result.rows[0].SESSIONINFO.on('data', (chunk: any) => {
-              const sessionInfo = JSON.parse(chunk);
-              if(sessionInfo.tokenExpiresAt < (Date.now() / 1000)){
-                res.status(403).send('Expired token');
-              }
-              res.status(200).send(sessionInfo.user);
-            });
-          } else {
-            res.status(403).send(false);
-          }
+        else {
+          userEmail = decoded.email;
         }
       })
-      conn.release();
-    })
+      connection = await pool.getConnection();
+
+      const userId = await getIdFromEmail(userEmail, connection);
+      if(userId === undefined) {
+        res.sendStatus(401);
+      }
+      const roleId = await getRoleIdFromUserId(userId, connection);
+      const permissions = await checkRolePermissions(roleId, action, connection);
+      if(permissions) {
+        res.send(true);
+      }
+      else {
+        res.sendStatus(403);
+      }
+    }
+    catch(err) {
+      appLogger.error(err);
+      res.status
+    }
+    finally {
+      if (connection) {
+        try {
+          await connection.close();
+        } catch (err) {
+          appLogger.error(err);
+        }
+      }
+    }
   })
 })
 
 authRouter.get('/checkToken', async (req, res) => {
   const token = req.cookies.token;
-  OracleDB.createPool(dbConf)
-  .then(pool => {
-    pool.getConnection((err, conn) => {
-      if(err) {
-        appLogger.error(`Error getting connection from pool: ${err.message}`)
-        return;
-      }
-      conn.execute(`select sessionInfo from user_sessions where accessToken = :token`, [token], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result: any) => {
-        if(err){
-          appLogger.error(`Error getting session info from database: ${err.message}`)
-          return;
-        }
-        if(result.rows) {
-          if(result.rows.length > 0){
-            result.rows[0].SESSIONINFO.setEncoding('utf8');
-            result.rows[0].SESSIONINFO.on('data', (chunk: any) => {
-              const sessionInfo = JSON.parse(chunk);
-              if(sessionInfo.tokenExpiresAt < (Date.now() / 1000)){
-                res.status(403).send('Expired token');
-              }
-              else {
-                res.send(true);
-              }
-            });
-          } else {
-            res.status(403).send(false);
-          }
-        }
-      })
-      conn.release();
-    })
-  })
 })
 
 authRouter.get('/logout', async (req, res) => {
   const token = req.cookies.token;
-  OracleDB.createPool(dbConf)
-  .then(pool => {
-    pool.getConnection((err, conn) => {
-      if(err) {
-        appLogger.error(`Error getting connection from pool: ${err.message}`)
-        return;
-      }
-      conn.execute(`delete from user_sessions where accessToken = :token`, [token], { autoCommit: true }, (err, result) => {
-        if(err){
-          appLogger.error(`Error deleting session from database: ${err.message}`)
-          return;
-        }
-        appLogger.info(`User session deleted from database: ${token}`)
-      })
-      conn.release();
-    })
-  })
   res.clearCookie('token');
   res.status(200).send('Logged out');
 })
 
-//TODO: probably needs to be elaborated upon
-// roles: admin, editor, viewer
-// need a more comprehensive way to handle permissions
-async function updateUserPermissions(user: any): Promise<any> {
-  if (user) {
-    if(user.jobTitle.includes('Manager') 
-      || user.jobTitle.includes('Director') 
-      || user.jobTitle.includes('Administrator')
-      || user.jobTitle.includes('Developer')) {
-      user.permissions = ['admin'];
-    }
-    else {
-      user.permissions = ['viewer'];
-    }
-  }
-  return user;
+export function getIdFromEmail(email: string, connection: Connection): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT GLOBALID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} WHERE EMAIL = :email`;
+    connection.execute(
+      query,
+      [email],
+      { outFormat: OracleDB.OUT_FORMAT_OBJECT },
+      (err, result: any) => {
+        if(err) {
+          appLogger.error(err);
+          reject(err);
+        }
+        else {
+          if(typeof result !== 'undefined' && result.rows.length > 0)
+            resolve(result.rows[0].GLOBALID);
+        }
+      }
+    )
+  })
+}
+
+function getRoleIdFromUserId(userId: string, connection: Connection): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT ROLE_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} WHERE USER_ID = :userId`;
+    connection.execute(
+      query,
+      [userId],
+      { outFormat: OracleDB.OUT_FORMAT_OBJECT },
+      (err, result: any) => {
+        if(err) {
+          appLogger.error(err);
+          reject(err);
+        }
+        else {
+          if(typeof result !== 'undefined' && result.rows.length > 0)
+            resolve(result.rows[0].ROLE_ID);
+        }
+      }
+    )
+  })
+}
+
+function checkRolePermissions(roleId: string, action: string, connection: Connection): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const query = `SELECT ${action} FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.rolesTbl} WHERE ROLE_ID = :roleId`;
+    connection.execute(
+      query,
+      [roleId],
+      { outFormat: OracleDB.OUT_FORMAT_OBJECT },
+      (err, result: any) => {
+        if(err) {
+          appLogger.error(err);
+          reject(err);
+        }
+        if(typeof result !== 'undefined' && result.rows.length > 0)
+          resolve(result.rows[0][action]);
+      }
+    )
+  })
 }
