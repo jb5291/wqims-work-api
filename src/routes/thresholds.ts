@@ -507,7 +507,7 @@ function updateThreshold(threshold: any, connection: Connection) {
 
 function deactivateGroupThresholds(thresholdId: any, connection: Connection) {
   return new Promise((resolve, reject) => {
-    const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} set ACTIVE=0 where THRESHOLDID=:thresholdId`
+    const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} set ACTIVE=0 where THRSHLD_ID=:thresholdId`
     const options = {
       autoCommit: false,
       bindDefs: [
