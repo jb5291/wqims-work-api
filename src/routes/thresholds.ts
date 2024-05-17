@@ -139,11 +139,12 @@ OracleDB.createPool(dbConf)
       else {
         result = await addThreshold(threshold, connection);
       }
-
+      connection.commit();
       res.json(result);
     } catch (err) {
       appLogger.error(err);
-      res.status(502).send('DB Connection Error');
+      connection?.rollback();
+      res.status(502).send('DB Connection Error, operation rolled back');
     } finally {
       if(connection) {
         connection.release((err: any) => {
@@ -190,10 +191,12 @@ OracleDB.createPool(dbConf)
       const result = await deactivateThreshold(thresholdId, connection);
       await deactivateGroupThresholds(thresholdId, connection);
 
+      connection.commit();
       res.json(result);
     } catch (err) {
       appLogger.error(err);
-      res.status(502).send('DB Connection Error');
+      connection?.rollback();
+      res.status(502).send('DB Connection Error, operation rolled back');
     } finally {
       if(connection) {
         connection.release((err: any) => {
@@ -304,7 +307,7 @@ function addInactiveThreshold(threshold: any, connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} set ACTIVE=1 where GLOBALID=:globalid`;
     const options = {
-      autoCommit: true,
+      autoCommit: false,
       bindDefs: [
         {type: OracleDB.STRING, maxSize: 50}
       ],
@@ -363,7 +366,7 @@ function addThreshold(threshold: any, connection: Connection) {
       globalId: threshold.globalId
     } */
     const options = {
-      autoCommit: true,
+      autoCommit: false,
       bindDefs: [
         {type: OracleDB.STRING, maxSize: 50},
         {type: OracleDB.STRING, maxSize: 50},
@@ -380,7 +383,7 @@ function addThreshold(threshold: any, connection: Connection) {
       outFormat: OracleDB.OUT_FORMAT_OBJECT
     }
     /* const test_options = {
-      autoCommit: true,
+      autoCommit: false,
       bindDefs: [
         {type: OracleDB.NUMBER, maxSize: 38},
         {type: OracleDB.STRING, maxSize: 50},
@@ -419,7 +422,7 @@ function deactivateThreshold(thresholdId: string, connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} set ACTIVE=0 where GLOBALID=:thresholdId`
     const options = {
-      autoCommit: true,
+      autoCommit: false,
       bindDefs: [
         {type: OracleDB.STRING, maxSize: 38}
       ],
@@ -506,7 +509,7 @@ function deactivateGroupThresholds(thresholdId: any, connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} set ACTIVE=0 where THRESHOLDID=:thresholdId`
     const options = {
-      autoCommit: true,
+      autoCommit: false,
       bindDefs: [
         {type: OracleDB.STRING, maxSize: 38}
       ],
