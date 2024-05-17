@@ -65,6 +65,11 @@ OracleDB.createPool(dbConf)
         const groupDataResult: any = await getActiveGroups(connection);
         const groupIds = groupDataResult.map((row: any) => row[0]);
 
+        if(groupIds.length === 0) {
+          res.json([]);
+          return;
+        }
+        
         const memberIdsResult: any = await getMemberIds(groupIds, connection);
 
         const thresholdIdsResult: any = await getThresholdIds(groupIds, connection);

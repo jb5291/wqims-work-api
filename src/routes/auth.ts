@@ -109,12 +109,7 @@ OracleDB.createPool(dbConf)
       })
       connection = await pool.getConnection();
 
-      const userId = await getIdFromEmail(userEmail, connection);
-      if(userId === undefined) {
-        res.sendStatus(401);
-      }
-      const roleId = await getRoleIdFromUserId(userId, connection);
-      const permissions = await checkRolePermissions(roleId, action, connection);
+      const permissions = await checkActionPermissions(userEmail, action, connection);
       if(permissions) {
         res.send(true);
       }
@@ -148,9 +143,14 @@ authRouter.get('/logout', async (req, res) => {
   res.status(200).send('Logged out');
 })
 
-export function getIdFromEmail(email: string, connection: Connection): Promise<any> {
+function checkActionPermissions(email: string, action: string, connection: Connection): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    const query = `SELECT GLOBALID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} WHERE EMAIL = :email`;
+    const query = `SELECT \
+                    CASE WHEN r.${action} = 1 THEN 'true' ELSE 'false' END AS action_valid \
+                  FROM users u \
+                  JOIN user_roles ur ON u.GLOBALID = ur.USER_ID \
+                  JOIN roles r ON ur.ROLE_ID = r.ROLE_ID \
+                  WHERE u.EMAIL = :email`;
     connection.execute(
       query,
       [email],
@@ -160,50 +160,11 @@ export function getIdFromEmail(email: string, connection: Connection): Promise<a
           appLogger.error(err);
           reject(err);
         }
+        if(result?.rows[0].ACTION_VALID === 'true')
+          resolve(true);
         else {
-          if(typeof result !== 'undefined' && result.rows.length > 0)
-            resolve(result.rows[0].GLOBALID);
+          resolve(false);
         }
-      }
-    )
-  })
-}
-
-function getRoleIdFromUserId(userId: string, connection: Connection): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const query = `SELECT ROLE_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} WHERE USER_ID = :userId`;
-    connection.execute(
-      query,
-      [userId],
-      { outFormat: OracleDB.OUT_FORMAT_OBJECT },
-      (err, result: any) => {
-        if(err) {
-          appLogger.error(err);
-          reject(err);
-        }
-        else {
-          if(typeof result !== 'undefined' && result.rows.length > 0)
-            resolve(result.rows[0].ROLE_ID);
-        }
-      }
-    )
-  })
-}
-
-function checkRolePermissions(roleId: string, action: string, connection: Connection): Promise<any> {
-  return new Promise((resolve, reject) => {
-    const query = `SELECT ${action} FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.rolesTbl} WHERE ROLE_ID = :roleId`;
-    connection.execute(
-      query,
-      [roleId],
-      { outFormat: OracleDB.OUT_FORMAT_OBJECT },
-      (err, result: any) => {
-        if(err) {
-          appLogger.error(err);
-          reject(err);
-        }
-        if(typeof result !== 'undefined' && result.rows.length > 0)
-          resolve(result.rows[0][action]);
       }
     )
   })

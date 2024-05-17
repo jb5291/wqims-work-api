@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET_KEY, WQIMS_DB_CONFIG } from '../util/secrets';
 import { appLogger } from '../util/appLogger';
 import cookieParser from 'cookie-parser';
-import { getIdFromEmail } from './auth';
+//import { getIdFromEmail } from './auth';
 
 const alertsRouter = express.Router();
 const dbConf = {
@@ -100,7 +100,7 @@ OracleDB.createPool(dbConf)
           userEmail = decoded.email;
         }
       });
-      const userId = await getIdFromEmail(userEmail, connection);
+      /* const userId = await getIdFromEmail(userEmail, connection);
       if(userId === undefined) {
         res.sendStatus(401);
       }
@@ -115,7 +115,8 @@ OracleDB.createPool(dbConf)
       }
       else {
         res.sendStatus(204);
-      }
+      } */
+      res.json(true)
     } catch (err) {
       appLogger.error(err);
       res.status(500).send('Error getting alerts');
