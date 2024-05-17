@@ -90,7 +90,6 @@ OracleDB.createPool(dbConf)
     let result: any = null;
     try {
       connection = await pool.getConnection();
-
       jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
         if (err) {
           appLogger.error(err);
@@ -100,23 +99,13 @@ OracleDB.createPool(dbConf)
           userEmail = decoded.email;
         }
       });
-      /* const userId = await getIdFromEmail(userEmail, connection);
-      if(userId === undefined) {
-        res.sendStatus(401);
-      }
-      const groupIds: any = await getUserGroupIds(connection, userId);
-      if(groupIds.length > 0) {
-        const thresholdIds: any = await getThresholdIdsFromGroupIds(groupIds.map((g:any) => g.GROUP_ID), connection);
-        const thresholds: any = await getThresholdsFromThresholdIds(thresholdIds.map((t:any) => t.THRSHLD_ID), connection);
-
-        const threshold_acode_loccode = thresholds.map((t:any) => [t.ANALYSIS, t.LOCCODE]);
-        result = await getAlertsFromThresholds(threshold_acode_loccode, connection);
-        res.json(result.rows);
+      result = await getAlerts(userEmail, connection);
+      if (result.length) {
+        res.json(result);
       }
       else {
         res.sendStatus(204);
-      } */
-      res.json(true)
+      }
     } catch (err) {
       appLogger.error(err);
       res.status(500).send('Error getting alerts');
@@ -130,114 +119,40 @@ OracleDB.createPool(dbConf)
       }
     }
   });
-
-  /* alertsRouter.put('/alerts', async(req, res) => {
-    let connection: Connection | null = null;
-    try {
-      connection = await pool.getConnection();
-      const alert = req.body.alert;
-
-      const addResults = await addAlerts(connection, alert);
-
-      res.json(addResults);
-    } catch (err) {
-      appLogger.error(err);
-      res.status(500).send('Error updating alert');
-    } finally {
-      if (connection) {
-        try {
-          await connection.close();
-        } catch (err) {
-          appLogger.error(err);
-        }
-      }
-    }
-  }); */
 })
 
-// might not need functionality to add alerts
-/* function addAlerts(conn: Connection, alert: any) {
+function getAlerts(email: string, connection: Connection) {
   return new Promise((resolve, reject) => {
-    const query = 
-  });
-} */
-
-function getUserGroupIds(connection: Connection, userId: string) {
-  return new Promise((resolve, reject) => {
-    connection.execute(
-      `SELECT GROUP_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} WHERE USER_ID = :userId`,
-      [userId],
-      { outFormat: OracleDB.OUT_FORMAT_OBJECT },
-      (err, result) => {
-        if(err) {
-          appLogger.error(err);
-          reject(err);
-        }
-        else {
-          resolve(result.rows);
-        }
-      }
-    )
-  });
-}
-
-function getThresholdIdsFromGroupIds(groupIds: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const binds: any = {}
-    const placeholder: any = groupIds.map((_:any,i:number) => `:id${i}`).join(',');
-    groupIds.forEach((g: any, i: number) => {
-      binds[`id${i}`] = g;
-    })
-    const query = `SELECT THRSHLD_ID FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} WHERE GROUP_ID IN (${placeholder}) AND ACTIVE = 1`
-    connection.execute(query, binds, { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
+    const query = `SELECT \
+                    u.GLOBALID,
+                    ug.GROUP_ID, ug.USER_ID,
+                    tg.GROUP_ID, tg.THRSHLD_ID,
+                    t.GLOBALID, t.ANALYSIS, t.LOCCODE,
+                    a.OBJECTID, a.GLOBALID, a.SAMPLENUM, a.LOCATION, a.COLLECTDATE, a.SAMPLECOLLECTOR, a.ACODE, a.ANALYSEDDATE, a.ANALYSEDBY, a.ADDR1, a.ADDR5, a.GEOCODEMATCHEDADDRESS, a.RESULT, a.LOCOCODE, a.WARNING_STATUS, a.ANALYTE
+                  FROM
+                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} u
+                  JOIN
+                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} ug ON u.GLOBALID = ug.USER_ID
+                  JOIN
+                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} tg ON ug.GROUP_ID = tg.GROUP_ID
+                  JOIN
+                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} t ON tg.THRSHLD_ID = t.GLOBALID
+                  JOIN
+                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} a ON t.ANALYSIS = a.ACODE AND t.LOCCODE = a.LOCOCODE
+                  WHERE
+                    u.EMAIL = :email AND t.ACTIVE = 1`;
+    connection.execute(query, [email], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result: any) => {
       if(err) {
         appLogger.error(err);
         reject(err);
       }
       else {
-        resolve(result.rows);
-      }
-    })
-  });
-}
-
-function getThresholdsFromThresholdIds(thresholdIds: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const binds: any = {}
-    const placeholder: any = thresholdIds.map((_:any,i:number) => `:id${i}`).join(',');
-    thresholdIds.forEach((t: any, i: number) => {
-      binds[`id${i}`] = t;
-    })
-    const query = `SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} WHERE GLOBALID IN (${placeholder}) AND ACTIVE = 1`;
-    connection.execute(query, binds, { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
-        if(err) {
-          appLogger.error(err);
-          reject(err);
-        }
-        else {
+        if(result.hasOwnProperty('rows') && result.rows.length > 0) {
           resolve(result.rows);
         }
-      }
-    )
-  });
-}
-
-function getAlertsFromThresholds(thresholds: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const placeholders = thresholds.map((t: any, i: number) => `(:acode${i}, :loccode${i})`).join(',');
-    const binds: any = {}
-    thresholds.forEach(([acode, loccode]: string[] , i: number) => {
-      binds[`acode${i}`] = acode;
-      binds[`loccode${i}`] = loccode;
-    })
-    const query = `SELECT OBJECTID, GLOBALID, SAMPLENUM, LOCATION, COLLECTDATE, SAMPLECOLLECTOR, ACODE, ANALYSEDDATE, ANALYSEDBY, ADDR1, ADDR5, GEOCODEMATCHEDADDRESS, RESULT, LOCOCODE, WARNING_STATUS, ANALYTE FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} WHERE (ACODE, LOCOCODE) in (${placeholders})`;
-    connection.execute(query, binds, { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
-      if(err) {
-        appLogger.error(err);
-        reject(err);
-      }
-      else {
-        resolve(result);
+        else {
+          resolve([]);
+        }
       }
     })
   })
