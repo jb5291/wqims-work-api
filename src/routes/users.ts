@@ -177,7 +177,7 @@ OracleDB.createPool(dbConf)
   /**
    * @swagger
    * /users/{id}:
-   *  post:
+   *  delete:
    *    summary: Deactivates a user from wqims.users
    *    description: Deactivates a user from wqims.users based on the provided ID
    *    tags:
@@ -200,7 +200,7 @@ OracleDB.createPool(dbConf)
    *              type: string
    *              example: 'Bad Gateway: DB Connection Error'
    */
-  usersRouter.post('/:id', async (req, res) => {
+  usersRouter.delete('/:id', async (req, res) => {
     let connection: Connection | null = null;
     try {
       connection = await pool.getConnection();
