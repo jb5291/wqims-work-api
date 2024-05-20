@@ -382,7 +382,7 @@ function getRoleId(role: string, connection: Connection) {
 
 function addUserRole(userId: string, roleId: string, connection: Connection) {
   return new Promise((resolve, reject) => {
-    const query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} (USER_ID, ROLE_ID) values (:userId, :roleId)`;
+    const query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} (USER_ID, ROLE_ID, ACTIVE) values (:userId, :roleId, 1)`;
     const options = {
       autoCommit: false,
       bindDefs: {
