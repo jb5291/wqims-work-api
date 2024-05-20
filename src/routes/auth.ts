@@ -81,11 +81,11 @@ authRouter.get('/callback', async (req, res) => {
         });
       })
     }) */
-    res.redirect(`${BASEURL}:${FE_LISTEN_PORT}/login?success=true`);
+    res.redirect(`${BASEURL}/login?success=true`);
   } catch (error) {
     console.debug(error);
     res.status(500).send(error);
-    res.redirect(`${BASEURL}:${FE_LISTEN_PORT}/login?success=false`);
+    res.redirect(`${BASEURL}/login?success=false`);
   }
 })
 
