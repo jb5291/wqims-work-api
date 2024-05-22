@@ -1,11 +1,10 @@
 import express from "express";
 import { AuthorizationCode } from "simple-oauth2";
 import OracleDB, { Connection, autoCommit } from "oracledb";
-import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 
 import graph from "../util/graph";
-import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG, JWT_SECRET_KEY, BASEURL, PROXY_LISTEN_PORT, FE_LISTEN_PORT} from "../util/secrets";
+import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG, JWT_SECRET_KEY, BASEURL, PROXY_LISTEN_PORT, FE_LISTEN_PORT, FE_BASE_URL} from "../util/secrets";
 import { appLogger } from "../util/appLogger";
 
 export const authRouter = express.Router();
@@ -28,10 +27,6 @@ const authConfig = {
 }
 
 const client = new AuthorizationCode(authConfig);
-
-function generateSessionId() {
-  return uuidv4();
-}
 
 authRouter.get('/login', (req, res) => {
   const authorizationUri = client.authorizeURL({
@@ -57,35 +52,12 @@ authRouter.get('/callback', async (req, res) => {
     const jwtToken = jwt.sign({ email: user.mail, exp: Math.floor((accessToken.token.expires_at as Date).getTime() / 1000) }, JWT_SECRET_KEY as string);
 
     res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: 'none' });
-    /* OracleDB.createPool(dbConf)
-    .then(pool => {
-      const userSession = generateSessionId();
-      pool.getConnection((err, conn) => {
-        if(err){
-          appLogger.error(`Error getting connection from pool: ${err.message}`)
-          return;
-        }
-        const sessionInfo = JSON.stringify({user: user.givenName + ' ' + user.surname, permissions: user.permissions, tokenExpiresAt: accessToken.token.expires_at});
-        conn.execute(`insert into user_sessions (sessionId, accessToken, sessionInfo) values (:userSession, :accessToken, :sessionInfo)`, [userSession, accessToken.token.access_token, sessionInfo], { autoCommit: true }, (err, result) => {
-          if(err){
-            appLogger.error(`Error inserting user session into database: ${err.message}`)
-            return;
-          }
-          appLogger.info(`User session inserted into database: ${userSession}`)
-        });
-        conn.release((err) => {
-          if(err){
-            appLogger.error(`Error releasing connection: ${err.message}`)
-            return;
-          }
-        });
-      })
-    }) */
-    res.redirect(`${BASEURL}/login?success=true`);
+
+    res.redirect(`${FE_BASE_URL}/login?success=true`);
   } catch (error) {
     console.debug(error);
     res.status(500).send(error);
-    res.redirect(`${BASEURL}/login?success=false`);
+    res.redirect(`${FE_BASE_URL}/login?success=false`);
   }
 })
 
@@ -96,30 +68,41 @@ OracleDB.createPool(dbConf)
   authRouter.get('/checkPermissions', async (req, res) => {
     let userEmail = '';
     let connection: Connection | null = null;
+    let error: any;
+    let tokenExpired: boolean = false;
     const action: string = req.query.action as string;
     try {
       jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
         if(err) {
           appLogger.error(err);
-          res.status(401).send('Unauthorized');
+          if(err.name === 'TokenExpiredError') {
+            tokenExpired = true
+            error = err;           
+            return;
+          }
         }
         else {
           userEmail = decoded.email;
         }
       })
-      connection = await pool.getConnection();
-
-      const permissions = await checkActionPermissions(userEmail, action, connection);
-      if(permissions) {
-        res.send(true);
+      if(tokenExpired) {
+        res.status(403).json(error);
       }
       else {
-        res.sendStatus(403);
+        connection = await pool.getConnection();
+  
+        const permissions = await checkActionPermissions(userEmail, action, connection);
+        if(permissions) {
+          res.send(true);
+        }
+        else {
+          res.sendStatus(403);
+        }
       }
     }
     catch(err) {
       appLogger.error(err);
-      res.status
+      res.status(500).send('Internal server error');
     }
     finally {
       if (connection) {
@@ -134,7 +117,18 @@ OracleDB.createPool(dbConf)
 })
 
 authRouter.get('/checkToken', async (req, res) => {
-  const token = req.cookies.token;
+  jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
+    if(err) {
+      if(err.name === 'TokenExpiredError') {
+        res.status(401).send('Token expired');
+      }
+      appLogger.error(err);
+      res.status(403).send('Unauthorized');
+    }
+    else {
+      res.send(true);
+    }
+  })
 })
 
 authRouter.get('/logout', async (req, res) => {

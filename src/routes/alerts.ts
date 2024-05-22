@@ -1,4 +1,4 @@
-import express, { application } from 'express';
+import express from 'express';
 import OracleDB,  { Connection } from 'oracledb';
 import jwt from 'jsonwebtoken';
 
@@ -63,7 +63,7 @@ OracleDB.createPool(dbConf)
    * @swagger
    * /alerts:
    *  get:
-   *    summary: Get all alerts
+   *    summary: Get alerts assigned to user
    *    description: Get alerts from wqims.limsalerts, will change once other alerts come in
    *    tags:
    *      - Alerts
@@ -119,6 +119,56 @@ OracleDB.createPool(dbConf)
       }
     }
   });
+
+  /**
+   * @swagger
+   * /alerts/all:
+   *  get:
+   *    summary: Get all alerts
+   *    description: Get alerts from wqims.limsalerts, will change once other alerts come in
+   *    tags:
+   *      - Alerts
+   *    responses:
+   *       '200':
+   *         description: JSON array of alerts
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               items:
+   *                 $ref: '#/components/schemas/Alert'
+    *       '500':
+    *         description: Error getting alerts
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: string
+    *               example: Error getting alerts
+   */
+  alertsRouter.get('/all', async (req, res) => {
+    pool.getConnection((err, conn) => {
+      if(err) {
+        appLogger.error('Error getting connection: ', err);
+        return res.status(502).send('DB Connection Error');
+      }
+
+      conn.execute(`SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl}`, [], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
+        if(err) {
+          appLogger.error('Error getting alerts: ', err);
+          return res.status(500).send('Error getting alerts');
+        }
+        else {
+          res.json(result.rows);
+
+          conn.release((err) => {
+            if(err) {
+              appLogger.error('Error releasing connection: ', err);
+            }  
+          })
+        }
+      });
+    });
+  })
 })
 
 function getAlerts(email: string, connection: Connection) {

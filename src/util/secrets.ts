@@ -38,6 +38,8 @@ export const ENVIRONMENT = process.env.NODE_ENV;
 
 export const BASEURL = process.env["BASEURL"] ? process.env["BASEURL"] as string : "";
 
+export const FE_BASE_URL = process.env["FE_BASE_URL"] ? process.env["FE_BASE_URL"] as string : "";
+
 export const WQIMS_DB_CONFIG = {
     username: get_env_val("WQIMS_DB_UN"),
     password: get_env_val("WQIMS_DB_PW"),
