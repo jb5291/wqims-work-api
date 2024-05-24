@@ -190,7 +190,7 @@ function getAlerts(email: string, connection: Connection) {
                   JOIN
                     ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} a ON t.ANALYSIS = a.ACODE AND t.LOCCODE = a.LOCOCODE
                   WHERE
-                    u.EMAIL = :email AND t.ACTIVE = 1`;
+                    u.EMAIL = :email AND tg.ACTIVE = 1`;
     connection.execute(query, [email], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result: any) => {
       if(err) {
         appLogger.error(err);

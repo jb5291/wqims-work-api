@@ -1,8 +1,7 @@
 import express from 'express';
-import OracleDB, { Connection, autoCommit } from 'oracledb';
-import jwt from 'jsonwebtoken';
+import OracleDB, { Connection } from 'oracledb';
 
-import { JWT_SECRET_KEY, WQIMS_DB_CONFIG } from "../util/secrets";
+import { WQIMS_DB_CONFIG } from "../util/secrets";
 import { appLogger } from '../util/appLogger';
 import graphHelper from '../util/graph';
 
@@ -300,7 +299,7 @@ OracleDB.createPool(dbConf)
 usersRouter.use('/search', async (req, res) => {
   try {
     const searchQuery= req.query.filter as string;
-    const users = await graphHelper.getADUsers(searchQuery, 1, 20);
+    const users = await graphHelper.getADUsers(searchQuery);
     res.send(users);
   } catch (error) {
     appLogger.error(error);

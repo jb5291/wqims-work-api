@@ -39,6 +39,10 @@ const dbConf = {
  *          type: string
  *        SYSTEM:
  *          type: string
+ *        ACTIVE:
+ *          type: number
+ *        UNIT:
+ *          type: string
  */
 
 OracleDB.createPool(dbConf)
@@ -79,8 +83,8 @@ OracleDB.createPool(dbConf)
 
       if(thresholds) {
         thresholds.forEach((threshold: any) => {
-          threshold.ACKTIMEOUT = threshold.ackTimeOut ? parseInt(threshold.ackTimeOut) : 0;
-          threshold.CLOSEOUTTIMEOUT = threshold.closeOutTimeOut ? parseInt(threshold.closeOutTimeOut) : 0;
+          threshold.ACKTIMEOUT = threshold.ACKTIMEOUT ? parseInt(threshold.ACKTIMEOUT) : 0;
+          threshold.CLOSEOUTTIMEOUT = threshold.CLOSEOUTTIMEOUT ? parseInt(threshold.CLOSEOUTTIMEOUT) : 0;
           threshold.UPPER_LOWER_SPECS = threshold.UPPER_LOWER_SPECS === 'USPEC' ? 'Upper' : 'Lower';
         });
       }
@@ -105,7 +109,7 @@ OracleDB.createPool(dbConf)
    * /thresholds:
    *  put:
    *    summary: Add a new threshold
-   *    description: Adds a new threshold to DSNGIST wqims.thresholds
+   *    description: Adds a new threshold to DSNGIST wqims.limsthresholds
    *    tags: 
    *      - Thresholds 
    *    requestBody:
@@ -488,6 +492,10 @@ function updateThreshold(threshold: any, connection: Connection) {
     if (threshold.CHECKLISTID) {
       query += `CHECKLISTID=:CHECKLISTID, `;
       bindParams.CHECKLISTID = threshold.CHECKLISTID;
+    }
+    if(threshold.UNIT) {
+      query += `UNIT=:UNIT, `;
+      bindParams.UNIT = threshold.UNIT;
     }
 
     query = query.slice(0, -2);

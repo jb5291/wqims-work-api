@@ -40,7 +40,7 @@ export default (() => {
     }
   }
   
-  async function getADUsers(searchQuery: string, pageNumber: number, pageSize: number) {
+  async function getADUsers(searchQuery: string) {
     try {
       if(!_appClient){
         appLogger.error("Please provide settings for the graph client");
@@ -48,7 +48,7 @@ export default (() => {
       }
       return _appClient?.api('/users')
         //.select(['id', 'displayName', 'mail', 'userPrincipalName'])
-        .filter(`startswith(givenName, '${searchQuery}')`)
+        .filter(`startswith(givenName, '${searchQuery}') or startswith(surname, '${searchQuery}')`)
         .top(10)
         .get();
     }
