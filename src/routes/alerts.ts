@@ -159,26 +159,78 @@ OracleDB.createPool(dbConf)
         }
         else {
           res.json(result.rows);
-
-          conn.release((err) => {
-            if(err) {
-              appLogger.error('Error releasing connection: ', err);
-            }  
-          })
         }
+      });
+      conn.release((err) => {
+        if(err) {
+          appLogger.error('Error releasing connection: ', err);
+        }  
       });
     });
   })
+
+  /** 
+   * @swagger
+  * /alerts/acknowledge/{id}:
+  *  get:
+  *    summary: Update alert in limsalerts to acknowledged
+  *    description: Updates an alert in wqims.limsalerts based on the provided ID
+  *    tags:
+  *      - Alerts
+  *    parameters:
+  *      - in: path
+  *        name: id
+  *        required: true
+  *        description: The ID of the alert to update
+  *        schema:
+  *          type: string
+  *    responses:
+  *      '200':
+  *        description: Alert acknowledged successfully
+  *        content:
+  *          application/json:
+  *            schema:
+  *              type: object
+  *      '502':
+  *        description: Bad Gateway
+  *        content:
+  *          application/json:
+  *            schema:
+  *              type: string
+  *              example: 'Bad Gateway: DB Connection Error'
+  */
+  alertsRouter.get('/acknowledge/:alertId', async (req, res) => {
+    const alertId = req.params.alertId;
+    pool.getConnection((err, conn) => {
+      if(err) {
+        appLogger.error(err);
+        res.status(502).send('DB Connection Error');
+      }
+      const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS = 'ACKNOWLEDGED' WHERE GLOBALID = :alertId`;
+      conn.execute(query, {alertId: alertId}, { autoCommit: true }, (err, result) => {
+        if(err) {
+          appLogger.error(err);
+          res.status(500).send('Error acknowledging alert');
+        }
+        else {
+          res.json({ message: 'Alert acknowledged'});
+        }
+      });
+      conn.release((err) => {
+        if(err) {
+          appLogger.error(err);
+        }
+      });
+    });
+  });
 })
 
 function getAlerts(email: string, connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `SELECT \
-                    u.GLOBALID,
-                    ug.GROUP_ID, ug.USER_ID,
-                    tg.GROUP_ID, tg.THRSHLD_ID,
-                    t.GLOBALID, t.ANALYSIS, t.LOCCODE,
-                    a.OBJECTID, a.GLOBALID, a.SAMPLENUM, a.LOCATION, a.COLLECTDATE, a.SAMPLECOLLECTOR, a.ACODE, a.ANALYSEDDATE, a.ANALYSEDBY, a.ADDR1, a.ADDR5, a.GEOCODEMATCHEDADDRESS, a.RESULT, a.LOCOCODE, a.WARNING_STATUS, a.ANALYTE
+                    u.GLOBALID as user_id,
+                    t.GLOBALID as threshold_id,
+                    a.OBJECTID, a.GLOBALID, a.SAMPLENUM, a.LOCATION, a.COLLECTDATE, a.SAMPLECOLLECTOR, a.ACODE, a.ANALYSEDDATE, a.ANALYSEDBY, a.ADDR1, a.ADDR5, a.GEOCODEMATCHEDADDRESS, a.RESULT, a.LOCOCODE, a.WARNING_STATUS, a.ANALYTE, a.STATUS
                   FROM
                     ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} u
                   JOIN
@@ -197,7 +249,7 @@ function getAlerts(email: string, connection: Connection) {
         reject(err);
       }
       else {
-        if(result.hasOwnProperty('rows') && result.rows.length > 0) {
+        if('rows' in result && result.rows.length > 0) {
           resolve(result.rows);
         }
         else {

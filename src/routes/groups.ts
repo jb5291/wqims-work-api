@@ -616,7 +616,7 @@ OracleDB.createPool(dbConf)
         const thresholdsToAdd: string[] = req.body.thresholdIdsToAdd.length ? req.body.thresholdIdsToAdd : [];
         const thresholdsToDeactivate: string[] = req.body.thresholdIdsToDeactivate.length ? req.body.thresholdIdsToDeactivate : [];
 
-        const updateGroupResults: any = await updateGroup(groupId, groupData.groupName, connection);
+        const updateGroupResults: any = await updateGroup(groupId, groupData.groupName.trim(), connection);
 
         if(membersToAdd.length) {
           const inactiveGroupMembers: any = await findInactiveGroupMembers(groupId, membersToAdd, connection);
