@@ -152,7 +152,30 @@ OracleDB.createPool(dbConf)
         return res.status(502).send('DB Connection Error');
       }
 
-      conn.execute(`SELECT OBJECTID, GLOBALID, SAMPLENUM, LOCATION, COLLECTDATE, SAMPLECOLLECTOR, ACODE, ANALYSEDDATE, ANALYSEDBY, ADDR1, ADDR5, GEOCODEMATCHEDADDRESS, RESULT, LOCOCODE, WARNING_STATUS, ANALYTE, STATUS FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl}`, [], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
+      conn.execute(`SELECT 
+                    OBJECTID, 
+                    GLOBALID, 
+                    SAMPLENUM, 
+                    LOCATION, 
+                    COLLECTDATE, 
+                    SAMPLECOLLECTOR, 
+                    ACODE, 
+                    ANALYSEDDATE, 
+                    ANALYSEDBY, 
+                    ADDR1, 
+                    ADDR5, 
+                    GEOCODEMATCHEDADDRESS, 
+                    RESULT, 
+                    LOCOCODE, 
+                    WARNING_STATUS, 
+                    ANALYTE, 
+                    STATUS, 
+                    COMMENTS,
+                    ACK_TIME,
+                    ACK_BY,
+                    CLOSED_TIME,
+                    CLOSED_BY 
+                    FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl}`, [], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
         if(err) {
           appLogger.error('Error getting alerts: ', err);
           return res.status(500).send('Error getting alerts');
@@ -230,7 +253,28 @@ function getAlerts(email: string, connection: Connection) {
     const query = `SELECT \
                     u.GLOBALID as user_id,
                     t.GLOBALID as threshold_id,
-                    a.OBJECTID, a.GLOBALID, a.SAMPLENUM, a.LOCATION, a.COLLECTDATE, a.SAMPLECOLLECTOR, a.ACODE, a.ANALYSEDDATE, a.ANALYSEDBY, a.ADDR1, a.ADDR5, a.GEOCODEMATCHEDADDRESS, a.RESULT, a.LOCOCODE, a.WARNING_STATUS, a.ANALYTE, a.STATUS
+                    a.OBJECTID, 
+                    a.GLOBALID, 
+                    a.SAMPLENUM, 
+                    a.LOCATION, 
+                    a.COLLECTDATE, 
+                    a.SAMPLECOLLECTOR, 
+                    a.ACODE, 
+                    a.ANALYSEDDATE, 
+                    a.ANALYSEDBY, 
+                    a.ADDR1, 
+                    a.ADDR5, 
+                    a.GEOCODEMATCHEDADDRESS, 
+                    a.RESULT, 
+                    a.LOCOCODE, 
+                    a.WARNING_STATUS, 
+                    a.ANALYTE, 
+                    a.STATUS, 
+                    a.COMMENTS,
+                    a.ACK_TIME,
+                    a.ACK_BY,
+                    a.CLOSED_TIME,
+                    a.CLOSED_BY
                   FROM
                     ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} u
                   JOIN
