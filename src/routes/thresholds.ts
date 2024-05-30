@@ -85,8 +85,21 @@ OracleDB.createPool(dbConf)
         thresholds.forEach((threshold: any) => {
           threshold.ACKTIMEOUT = threshold.ACKTIMEOUT ? parseInt(threshold.ACKTIMEOUT) : 0;
           threshold.CLOSEOUTTIMEOUT = threshold.CLOSEOUTTIMEOUT ? parseInt(threshold.CLOSEOUTTIMEOUT) : 0;
-          threshold.UPPER_LOWER_SPECS = threshold.UPPER_LOWER_SPECS === 'USPEC' ? 'Upper' : 'Lower';
-        });
+          switch(threshold.UPPER_LOWER_SPECS) {
+            case 'Upper':
+            case 'Lower':
+              break;
+            case 'USPEC':
+              threshold.UPPER_LOWER_SPECS = 'Upper';
+              break;
+            case 'LSPEC':
+              threshold.UPPER_LOWER_SPECS = 'Lower';
+              break;
+            default:
+              threshold.UPPER_LOWER_SPECS = 'Upper';
+              break;
+          }
+          });
       }
       
       res.json(thresholds);
