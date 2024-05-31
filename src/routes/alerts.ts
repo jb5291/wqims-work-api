@@ -195,11 +195,17 @@ OracleDB.createPool(dbConf)
   /** 
    * @swagger
   * /alerts/acknowledge/{id}:
-  *  get:
+  *  post:
   *    summary: Update alert in limsalerts to acknowledged
   *    description: Updates an alert in wqims.limsalerts based on the provided ID
   *    tags:
   *      - Alerts
+  *    requestBody:
+  *      required: true  
+  *      content:
+  *        string:
+  *          schema: 
+  *            type: string
   *    parameters:
   *      - in: path
   *        name: id
@@ -222,15 +228,30 @@ OracleDB.createPool(dbConf)
   *              type: string
   *              example: 'Bad Gateway: DB Connection Error'
   */
-  alertsRouter.get('/acknowledge/:alertId', async (req, res) => {
+  alertsRouter.post('/acknowledge/:alertId', async (req, res) => {
     const alertId = req.params.alertId;
+    const timestamp = req.body.timestamp;
+    let userEmail = '';
+    jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
+      if (err) {
+        appLogger.error(err);
+        res.status(401).send('Unauthorized');
+      }
+      else {
+        userEmail = decoded.email;
+      }
+    });
+
+    const userName = userEmail.split('@')[0].replace('.', '_');
+
     pool.getConnection((err, conn) => {
       if(err) {
         appLogger.error(err);
         res.status(502).send('DB Connection Error');
       }
-      const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS = 'ACKNOWLEDGED' WHERE GLOBALID = :alertId`;
-      conn.execute(query, {alertId: alertId}, { autoCommit: true }, (err, result) => {
+
+      const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS = 'ACKNOWLEDGED', ACK_BY=:userName, ACK_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM') WHERE GLOBALID = :alertId`;
+      conn.execute(query, {userName: userName, timestamp: timestamp, alertId: alertId}, { autoCommit: true }, (err, result) => {
         if(err) {
           appLogger.error(err);
           res.status(500).send('Error acknowledging alert');
