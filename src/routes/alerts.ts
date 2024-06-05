@@ -267,6 +267,46 @@ OracleDB.createPool(dbConf)
       });
     });
   });
+
+  alertsRouter.post('/close/:alertId', async (req, res) => {
+    const alertId = req.params.alertId;
+    const timestamp = req.body.timestamp;
+    let userEmail = '';
+    jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
+      if (err) {
+        appLogger.error(err);
+        res.status(401).send('Unauthorized');
+      }
+      else {
+        userEmail = decoded.email;
+      }
+    });
+
+    const userName = userEmail.split('@')[0].replace('.', '_');
+
+    pool.getConnection((err, conn) => {
+      if(err) {
+        appLogger.error(err);
+        res.status(502).send('DB Connection Error');
+      }
+
+      const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS = 'CLOSED', CLOSED_BY=:userName, CLOSED_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM') WHERE GLOBALID = :alertId`;
+      conn.execute(query, {userName: userName, timestamp: timestamp, alertId: alertId}, { autoCommit: true }, (err, result) => {
+        if(err) {
+          appLogger.error(err);
+          res.status(500).send('Error acknowledging alert');
+        }
+        else {
+          res.json({ message: 'Alert acknowledged'});
+        }
+      });
+      conn.release((err) => {
+        if(err) {
+          appLogger.error(err);
+        }
+      });
+    });
+  });
 })
 
 function getAlerts(email: string, connection: Connection) {
