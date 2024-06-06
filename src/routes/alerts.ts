@@ -1,5 +1,5 @@
 import express from 'express';
-import OracleDB,  { Connection } from 'oracledb';
+import OracleDB,  { Connection, outFormat } from 'oracledb';
 import jwt from 'jsonwebtoken';
 
 import { JWT_SECRET_KEY, WQIMS_DB_CONFIG } from '../util/secrets';
@@ -192,20 +192,25 @@ OracleDB.createPool(dbConf)
     });
   })
 
-  /** 
-   * @swagger
-  * /alerts/acknowledge/{id}:
+/** 
+  * @swagger
+  * /alerts/status/{id}:
   *  post:
-  *    summary: Update alert in limsalerts to acknowledged
+  *    summary: Update alert in limsalerts 
   *    description: Updates an alert in wqims.limsalerts based on the provided ID
   *    tags:
   *      - Alerts
   *    requestBody:
   *      required: true  
   *      content:
-  *        string:
+  *        application/json:
   *          schema: 
-  *            type: string
+  *             type: object
+  *             properties:
+  *               status:
+  *                 type: string
+  *               comments:
+  *                 type: string
   *    parameters:
   *      - in: path
   *        name: id
@@ -215,7 +220,7 @@ OracleDB.createPool(dbConf)
   *          type: string
   *    responses:
   *      '200':
-  *        description: Alert acknowledged successfully
+  *        description: Alert status changed successfully
   *        content:
   *          application/json:
   *            schema:
@@ -228,84 +233,84 @@ OracleDB.createPool(dbConf)
   *              type: string
   *              example: 'Bad Gateway: DB Connection Error'
   */
-  alertsRouter.post('/acknowledge/:alertId', async (req, res) => {
+  alertsRouter.post('/status/:alertId', async (req, res) => {
     const alertId = req.params.alertId;
-    const timestamp = req.body.timestamp;
+    const status = req.body?.STATUS === undefined ? 'ERROR' : req.body.STATUS;
+    const comments = req.body?.COMMENTS === undefined ? '' : req.body.COMMENTS;
     let userEmail = '';
+    let connection: Connection | null = null;
+    let result!: any;
     jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
       if (err) {
-        appLogger.error(err);
-        res.status(401).send('Unauthorized');
+        if(err.status === 403) {
+          if(err.hasOwnProperty('error') && err.error.name === 'TokenExpiredError') {
+              appLogger.error(err);
+              res.status(403).send('Unauthorized');
+          }
+          else {
+            appLogger.error(err);
+            res.status(403).send('Forbidden');
+          }
+        }
+        else {
+          appLogger.error(err);
+          res.status(401).send('Unauthorized');
+        }
       }
       else {
         userEmail = decoded.email;
       }
     });
-
     const userName = userEmail.split('@')[0].replace('.', '_');
+    try {
+      connection = await pool.getConnection();
+      const timestamp = getTimeStamp();
 
-    pool.getConnection((err, conn) => {
-      if(err) {
-        appLogger.error(err);
-        res.status(502).send('DB Connection Error');
+      const queryResult = await updateAlertStatus(userName, alertId, status, comments, connection);
+
+      switch(status) {
+        case "NEW":
+          result = {
+            ACK_BY: '',
+            ACK_TIME: '',
+            STATUS: 'NEW',
+            COMMENTS: comments
+          }
+          break;
+        case "ACKNOWLEDGED":
+          result = {
+            ACK_BY: userName,
+            ACK_TIME: timestamp,
+            STATUS: "ACKNOWLEDGED",
+            COMMENTS: comments
+          }
+          break;
+        case "CLOSED":
+          result = {
+            CLOSED_BY: userName,
+            CLOSED_TIME: timestamp,
+            STATUS: "CLOSED",
+            COMMENTS: comments
+          }
+          break;
+        default:
+          result = {error: "Invalid status provided. Valid statuses are NEW, ACKNOWLEDGED, and CLOSED"};
       }
-
-      const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS = 'ACKNOWLEDGED', ACK_BY=:userName, ACK_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM') WHERE GLOBALID = :alertId`;
-      conn.execute(query, {userName: userName, timestamp: timestamp, alertId: alertId}, { autoCommit: true }, (err, result) => {
-        if(err) {
-          appLogger.error(err);
-          res.status(500).send('Error acknowledging alert');
-        }
-        else {
-          res.json({ message: 'Alert acknowledged'});
-        }
-      });
-      conn.release((err) => {
-        if(err) {
-          appLogger.error(err);
-        }
-      });
-    });
-  });
-
-  alertsRouter.post('/close/:alertId', async (req, res) => {
-    const alertId = req.params.alertId;
-    const timestamp = req.body.timestamp;
-    let userEmail = '';
-    jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
-      if (err) {
-        appLogger.error(err);
-        res.status(401).send('Unauthorized');
-      }
-      else {
-        userEmail = decoded.email;
-      }
-    });
-
-    const userName = userEmail.split('@')[0].replace('.', '_');
-
-    pool.getConnection((err, conn) => {
-      if(err) {
-        appLogger.error(err);
-        res.status(502).send('DB Connection Error');
-      }
-
-      const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS = 'CLOSED', CLOSED_BY=:userName, CLOSED_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM') WHERE GLOBALID = :alertId`;
-      conn.execute(query, {userName: userName, timestamp: timestamp, alertId: alertId}, { autoCommit: true }, (err, result) => {
-        if(err) {
-          appLogger.error(err);
-          res.status(500).send('Error acknowledging alert');
-        }
-        else {
-          res.json({ message: 'Alert acknowledged'});
-        }
-      });
-      conn.release((err) => {
-        if(err) {
+      res.json(result);
+    }
+    catch(err: any) {
+      appLogger.error(err);
+      res.status(502).send('Bad Gateway: DB Connection Error')
+    }
+    finally {
+      if (connection) {
+        try {
+          await connection.close();
+        } catch (err) {
           appLogger.error(err);
         }
-      });
-    });
+      }
+    }
   });
 })
 
@@ -363,6 +368,69 @@ function getAlerts(email: string, connection: Connection) {
       }
     })
   })
+}
+
+function updateAlertStatus(userName: string, alertId: string, status: string, comments: string, connection: Connection): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let query = '';
+    switch(status) {
+      case "NEW":
+        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS =:status, ACK_BY='', ACK_TIME='', CLOSED_BY='', CLOSED_TIME='', COMMENTS=:comments WHERE GLOBALID = :alertId`;
+        break;
+      case "ACKNOWLEDGED":
+        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS =:status, ACK_BY=:userName, ACK_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM'), COMMENTS=:comments WHERE GLOBALID = :alertId`;
+        break;
+      case "CLOSED":
+        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS =:status, CLOSED_BY=:userName, CLOSED_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM'), COMMENTS=:comments WHERE GLOBALID = :alertId`;
+        break;
+      default:
+        reject({error: "Invalid status provided. Valid statuses are NEW, ACKNOWLEDGED, and CLOSED"});
+    } 
+    const timestamp = getTimeStamp();
+    const options = {
+      autoCommit: true,
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    if(status === "NEW") {
+      connection.execute(query, {status: status, comments: comments, alertId: alertId}, options, (err, result) => {
+        if(err) {
+          appLogger.error(err);
+          reject(err);
+        }
+        else {
+          resolve(result);
+        }
+      })
+    } else {
+      connection.execute(query, {status: status, userName: userName, timestamp: timestamp, comments: comments, alertId: alertId}, options, (err, result) => {
+        if(err) {
+          appLogger.error(err);
+          reject(err);
+        }
+        else {
+          resolve(result);
+        }
+      })
+    }
+  })
+}
+
+function getTimeStamp(): string {
+  const pad = (number: number, digits: any) => String(number).padStart(digits, '0');
+  const now = new Date();
+  // oracle timestamp format YYYY-MM-DD HH:MM:SS:FF AM/PM
+
+  const YYYY = now.getFullYear();
+  const MM = pad(now.getMonth() + 1, 2);
+  const DD = pad(now.getDate(), 2);
+  const hours24 = now.getHours();
+  const HH = pad(hours24 % 12 || 12, 2);
+  const mm = pad(now.getMinutes(), 2);
+  const ss = pad(now.getSeconds(), 2);
+  const ff = pad(now.getMilliseconds(), 3);
+  const ampm = hours24 < 12 ? 'AM' : 'PM';
+
+  return `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}.${ff} ${ampm}`
 }
 
 export default alertsRouter;
