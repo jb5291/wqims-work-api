@@ -5,6 +5,10 @@ function getDateLabel(){
     return new Date().toLocaleString();
 }
 
+const actionLogFormat = winston.format.printf(({ level, message, timestamp, email, ip }) => {
+    return `${timestamp} [IP: ${ip || 'unknown'}] [EMAIL: ${email || 'no-email-cookie'}] : ${message}`;
+});
+
 // configure the application log
 const appLogOptions: winston.LoggerOptions = {
     transports: [
@@ -19,8 +23,23 @@ const appLogOptions: winston.LoggerOptions = {
                 return `${getDateLabel()} - ${info.level} - ${info.message}`;
             })
         })
-    ]
+    ],
 };
+
+export const actionLogger: winston.Logger = winston.createLogger({
+        format: winston.format.combine(
+            winston.format.timestamp(),
+            winston.format.colorize(),
+            actionLogFormat,
+        ),
+        transports: [
+            new winston.transports.Console(),
+            new winston.transports.File({ filename: path.join(__dirname, "..", "..", "logs", "actions.log"), level: "info", maxFiles: 3, maxsize: 50000000 }),
+        ],
+    })
+
+
+
 
 export const appLogger = winston.createLogger(appLogOptions);
 

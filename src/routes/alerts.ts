@@ -3,8 +3,9 @@ import OracleDB,  { Connection, outFormat } from 'oracledb';
 import jwt from 'jsonwebtoken';
 
 import { JWT_SECRET_KEY, WQIMS_DB_CONFIG } from '../util/secrets';
-import { appLogger } from '../util/appLogger';
+import { appLogger, actionLogger } from '../util/appLogger';
 import cookieParser from 'cookie-parser';
+import { checkToken } from './auth';
 //import { getIdFromEmail } from './auth';
 
 const alertsRouter = express.Router();
@@ -88,17 +89,11 @@ OracleDB.createPool(dbConf)
     let connection: Connection | null = null;
     let userEmail: string = '';
     let result: any = null;
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     try {
       connection = await pool.getConnection();
-      jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
-        if (err) {
-          appLogger.error(err);
-          res.status(401).send('Unauthorized');
-        }
-        else {
-          userEmail = decoded.email;
-        }
-      });
+      userEmail = checkToken(req, res)
+      actionLogger.info(`Getting alerts for ${userEmail}`, { email: userEmail, ip: ip })
       result = await getAlerts(userEmail, connection);
       if (result.length) {
         res.json(result);

@@ -19,7 +19,7 @@ import { authRouter } from "./routes/auth";
 const app = express();
 
 app.use(cors({
-  origin: `${FE_BASE_URL}`,
+  origin: [`${FE_BASE_URL}`, `${BASEURL}:${PROXY_LISTEN_PORT}`],
   credentials: true,
 }));
 app.use(express.json());

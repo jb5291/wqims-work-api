@@ -2,7 +2,7 @@ import express from 'express';
 import OracleDB, { Connection } from 'oracledb';
 
 import { WQIMS_DB_CONFIG } from "../util/secrets";
-import { appLogger } from '../util/appLogger';
+import { appLogger, actionLogger } from '../util/appLogger';
 import graphHelper from '../util/graph';
 
 const usersRouter = express.Router();
@@ -89,7 +89,6 @@ OracleDB.createPool(dbConf)
           return res.status(502).send('DB Connection Error');
         }
         res.json(result.rows);
-
         conn.release();
       });
     });
@@ -127,7 +126,8 @@ OracleDB.createPool(dbConf)
   usersRouter.put('/', async (req, res) => {
     let connection: Connection | null = null;
     let result: any;
-    
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
     try {
       connection = await pool.getConnection();
 
@@ -155,6 +155,7 @@ OracleDB.createPool(dbConf)
         await addUserRole(result.GLOBALID, roleId, connection);
       }
       connection.commit();
+      actionLogger.info('User added', { email: user.email });
       res.json(result);
     }
     catch (error) {

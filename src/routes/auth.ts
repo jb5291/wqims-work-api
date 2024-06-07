@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 
 import graph from "../util/graph";
 import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG, JWT_SECRET_KEY, BASEURL, PROXY_LISTEN_PORT, FE_LISTEN_PORT, FE_BASE_URL} from "../util/secrets";
-import { appLogger } from "../util/appLogger";
+import { appLogger, actionLogger } from "../util/appLogger";
 
 export const authRouter = express.Router();
 const dbConf = {
@@ -29,6 +29,8 @@ const authConfig = {
 const client = new AuthorizationCode(authConfig);
 
 authRouter.get('/login', (req, res) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  actionLogger.debug('User requested login page', { ip });
   const authorizationUri = client.authorizeURL({
     redirect_uri: `${BASEURL}:${PROXY_LISTEN_PORT}/auth/callback`,
     scope: 'https://graph.microsoft.com/.default'
@@ -37,8 +39,8 @@ authRouter.get('/login', (req, res) => {
 })
 
 authRouter.get('/callback', async (req, res) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   const code = req.query.code;
-
   const options: any = {
     code,
     redirect_uri: `${BASEURL}:${PROXY_LISTEN_PORT}/auth/callback`,
@@ -51,7 +53,8 @@ authRouter.get('/callback', async (req, res) => {
 
     const jwtToken = jwt.sign({ email: user.mail, exp: Math.floor((accessToken.token.expires_at as Date).getTime() / 1000) }, JWT_SECRET_KEY as string);
 
-    res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: 'none' });
+    res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
+    actionLogger.info('User logged in', { email: user.mail, ip: ip })
 
     res.redirect(`${FE_BASE_URL}/login?success=true`);
   } catch (error) {
@@ -63,41 +66,30 @@ authRouter.get('/callback', async (req, res) => {
 
 OracleDB.createPool(dbConf)
 .then(pool => {
-  appLogger.info('Connection pool created for checking role permissions');
-
   authRouter.get('/checkPermissions', async (req, res) => {
     let userEmail = '';
     let connection: Connection | null = null;
     let error: any;
     let tokenExpired: boolean = false;
     const action: string = req.query.action as string;
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
     try {
-      jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
-        if(err) {
-          appLogger.error(err);
-          if(err.name === 'TokenExpiredError') {
-            tokenExpired = true
-            error = err;           
-            return;
-          }
-        }
-        else {
-          userEmail = decoded.email;
-        }
-      })
-      if(tokenExpired) {
-        res.status(403).json(error);
+      userEmail = checkToken(req, res);
+
+      if(userEmail === '') {
+        res.status(500).send('Internal server error');
+      }
+      actionLogger.info(`Attempting action ${action}`, { email: userEmail, ip: ip })
+      connection = await pool.getConnection();
+
+      const permissions = await checkActionPermissions(userEmail, action, connection);
+      if(permissions) {
+        actionLogger.info(`Action ${action} permitted`, { email: userEmail, ip: ip })
+        res.send(true);
       }
       else {
-        connection = await pool.getConnection();
-  
-        const permissions = await checkActionPermissions(userEmail, action, connection);
-        if(permissions) {
-          res.send(true);
-        }
-        else {
-          res.sendStatus(403);
-        }
+        actionLogger.warn(`Action ${action} denied`, { email: userEmail, ip: ip })
+        res.sendStatus(403);
       }
     }
     catch(err) {
@@ -116,25 +108,21 @@ OracleDB.createPool(dbConf)
   })
 })
 
-authRouter.get('/checkToken', async (req, res) => {
+authRouter.get('/logout', async (req, res) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  let userEmail: string = '';
   jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
-    if(err) {
-      if(err.name === 'TokenExpiredError') {
-        res.status(401).send('Token expired');
-      }
+    if (err) {
       appLogger.error(err);
-      res.status(403).send('Unauthorized');
+      res.status(401).send('Unauthorized');
     }
     else {
-      res.send(true);
+      userEmail = decoded.email;
     }
-  })
-})
-
-authRouter.get('/logout', async (req, res) => {
-  const token = req.cookies.token;
+  });
+  actionLogger.info('User logged out', { email: userEmail, ip });
   res.clearCookie('token');
-  res.status(200).send('Logged out');
+  res.json('Logged out');
 })
 
 function checkActionPermissions(email: string, action: string, connection: Connection): Promise<boolean> {
@@ -162,4 +150,19 @@ function checkActionPermissions(email: string, action: string, connection: Conne
       }
     )
   })
+}
+
+export function checkToken(req: any, res: any): string {
+  let email: string = '';
+  jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
+    if(err) {
+      appLogger.error(err);
+      res.status(403).json(err);
+      return '';
+    }
+    else {
+      email = decoded.email;
+    }
+  })
+  return email;
 }
