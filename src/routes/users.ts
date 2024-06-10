@@ -126,7 +126,6 @@ OracleDB.createPool(dbConf)
   usersRouter.put('/', async (req, res) => {
     let connection: Connection | null = null;
     let result: any;
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
     try {
       connection = await pool.getConnection();
@@ -138,7 +137,7 @@ OracleDB.createPool(dbConf)
         user.GLOBALID = inactiveUser[0].GLOBALID;
         user.OBJECTID = inactiveUser[0].OBJECTID;
         result = await addInactiveUser(user, connection);
-        if(inactiveUser[0].ROLE !== user.role.toLowerCase()) {
+        if(inactiveUser[0].ROLE.toLowerCase() !== user.role.toLowerCase()) {
           const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
           await editAddInactiveUserRole(inactiveUser[0].GLOBALID, roleId, connection);
         }
@@ -205,11 +204,13 @@ OracleDB.createPool(dbConf)
     try {
       connection = await pool.getConnection();
       const id = req.params.id;
+      const user: any = await findUser(id, connection);
       const result = await deactivateUser(id, connection);
       await deactivateGroupUser(id, connection);
       await deactivateUserRole(id, connection);
 
       connection.commit();
+      actionLogger.info('User deactivated', { email: user[0].EMAIL });
       res.send(result);
     }
     catch (error) {
@@ -275,6 +276,7 @@ OracleDB.createPool(dbConf)
       await updateUserRole(id, roleId, connection);
 
       connection.commit();
+      actionLogger.info('User updated', { email: user.email });
       res.send(result);
     }
     catch (error) {
@@ -750,6 +752,24 @@ function reactivateGroupUser(userId: any, connection: Connection) {
       }
     })
   });
+}
+
+function findUser(userId: any, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `select NAME, EMAIL from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where GLOBALID = :userId`;
+    const options = {
+      outFormat: OracleDB.OUT_FORMAT_OBJECT
+    }
+    connection.execute(query, {userId: userId}, options, (err, result) => {
+      if(err) {
+        appLogger.error(err);
+        reject(err);
+      }
+      else {
+        resolve(result.rows);
+      }
+    });
+  })
 }
 
 export default usersRouter;

@@ -291,6 +291,7 @@ OracleDB.createPool(dbConf)
         default:
           result = {error: "Invalid status provided. Valid statuses are NEW, ACKNOWLEDGED, and CLOSED"};
       }
+      actionLogger.info(`Alert ${alertId} status changed to ${status}`, { email: userEmail, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress })
       res.json(result);
     }
     catch(err: any) {

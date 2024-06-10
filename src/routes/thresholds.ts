@@ -2,7 +2,7 @@ import express from 'express';
 import OracleDB, { Connection } from 'oracledb';
 
 import { WQIMS_DB_CONFIG } from "../util/secrets";
-import { appLogger } from '../util/appLogger';
+import { appLogger, actionLogger } from '../util/appLogger';
 
 const thresholdsRouter = express.Router();
 const dbConf = {
@@ -157,6 +157,7 @@ OracleDB.createPool(dbConf)
         result = await addThreshold(threshold, connection);
       }
       connection.commit();
+      actionLogger.info(`Threshold added: ${threshold.ANAYLYTE}-${threshold.UPPER_LOWER_SPECS}-${threshold.LOCCODE}`)
       res.json(result);
     } catch (err) {
       appLogger.error(err);
@@ -209,6 +210,9 @@ OracleDB.createPool(dbConf)
       await deactivateGroupThresholds(thresholdId, connection);
 
       connection.commit();
+      const threshold:any = await connection.execute(`SELECT ANALYTE, UPPER_LOWER_SPECS, LOCCODE FROM ${WQIMS_DB_CONFIG.thresholdTbl} where GLOBALID=:thresholdId`, [thresholdId], { outFormat: OracleDB.OUT_FORMAT_OBJECT});
+
+      actionLogger.info(`Threshold deactivated: ${threshold?.rows[0][0]}-${threshold?.rows[0][1]}-${threshold?.rows[0][2]}`)
       res.json(result);
     } catch (err) {
       appLogger.error(err);
@@ -265,6 +269,7 @@ OracleDB.createPool(dbConf)
       const threshold = req.body;
       const result = await updateThreshold(threshold, connection);
 
+      actionLogger.info(`Threshold updated: ${threshold.ANALYTE}-${threshold.UPPER_LOWER_SPECS}-${threshold.LOCCODE}`)
       res.json(result);
     } catch (err) {
       appLogger.error(err);
