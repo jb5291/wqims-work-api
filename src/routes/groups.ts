@@ -2,7 +2,7 @@ import express from 'express';
 import OracleDB, { Connection } from 'oracledb';
 
 import { WQIMS_DB_CONFIG } from "../util/secrets";
-import { appLogger } from '../util/appLogger';
+import { appLogger, actionLogger } from '../util/appLogger';
 
 const groupsRouter = express.Router();
 const dbConf = {
@@ -208,7 +208,10 @@ OracleDB.createPool(dbConf)
             await addThresholdIds(addedGroup.groupId, thresholds.map((t: any) => t.GLOBALID), connection)
           }
         }
-          
+         
+        const memberNames = members.map((m:any)=>m.name).join(', ');
+        const thresholdNames = members.map((t:any)=>t.ANALYTE+'-'+t.UPPER_LOWER_SPECS+'-'+t.LOCCODE).join(', ');
+        actionLogger.info(`Group Added ${groupName}, members: ${memberNames}, thresholds: ${thresholdNames}`);
         res.json(addedGroup);
 
       } catch (err) {
@@ -422,7 +425,9 @@ OracleDB.createPool(dbConf)
       try {
         connection = await pool.getConnection();
         const groupId = req.params.id;
-    
+        const groups: any = await getActiveGroups(connection);
+        const group = groups.find((g:any)=>g.groupid === groupId);
+        
         const deleteGrpExpr = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} set ACTIVE=0 where groupid = '${groupId}'`;
         const deleteUsrGrpsExpr = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} set ACTIVE=0 where GROUP_ID = '${groupId}'`;
         const deleteThrshldGrpsExpr = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} set ACTIVE=0 where GROUP_ID = '${groupId}'`;
@@ -433,6 +438,7 @@ OracleDB.createPool(dbConf)
         
 
         connection.commit();
+        actionLogger.info(`Group deactivated ${group.groupName}`);
         res.json([deleteGrpResult, deleteUsrGrpsResult, deleteThrshldGrpsResult]);
       }
       catch (err) {
@@ -493,9 +499,14 @@ OracleDB.createPool(dbConf)
 
         const groupId = req.params.id;
         const memberData: string[] = req.body.memberIds.length ? req.body.memberIds : [];
+        const members: any = await getActiveMembers(groupId, connection);
 
-        const deleteMemberResults: any = await deactivateGroupMemberIds(groupId, memberData, connection)
+        const groupName = await getActiveGroups(connection).then((groups: any) => groups.find((g:any)=>g.groupid === groupId).groupName);
+        const deletedMembers:any = members.filter((m:any)=>memberData.includes(m[0])).map((m:any)=>m[1]).join(', ');
+
+        const deleteMemberResults: any = await deactivateGroupMemberIds(groupId, memberData, connection);
           
+        actionLogger.info(`Members deleted ${deletedMembers} from ${groupName}`);
         res.json(deleteMemberResults);
       } catch (err) {
         res.status(502).json({ error: 'DB Connection Error'});
@@ -553,10 +564,14 @@ OracleDB.createPool(dbConf)
         connection = await pool.getConnection();
 
         const groupId = req.params.id;
+        const groupName = await getActiveGroups(connection).then((groups: any) => groups.find((g:any)=>g.groupid === groupId).groupName);
         const thresholdData: string[] = req.body.thresholdIds.length ? req.body.thresholdIds : [];
+        const thresholds: any = await getActiveThresholds(groupId, connection);
+        const deletedThresholds:any = thresholds.filter((t:any)=>thresholdData.includes(t[1])).map((t:any)=>t[2]+'-'+t[3]+'-'+t[4]).join(', ');
 
         const deactivateThresholdResults: any = await deactivateThresholdIds(groupId, thresholdData, connection)
           
+        actionLogger.info(`Thresholds deleted ${deletedThresholds} from ${groupName}`);
         res.json(deactivateThresholdResults);
       } catch (err) {
         res.status(502).json({ error: 'DB Connection Error'});
@@ -615,6 +630,8 @@ OracleDB.createPool(dbConf)
         const membersToDeactivate: string[] = req.body.memberIdsToDeactivate.length ? req.body.memberIdsToDeactivate : [];
         const thresholdsToAdd: string[] = req.body.thresholdIdsToAdd.length ? req.body.thresholdIdsToAdd : [];
         const thresholdsToDeactivate: string[] = req.body.thresholdIdsToDeactivate.length ? req.body.thresholdIdsToDeactivate : [];
+        let memberEmailsDeactivated: string = '';
+        let thresholdInfoDeactivated: string = '';
 
         const updateGroupResults: any = await updateGroup(groupId, groupData.groupName.trim(), connection);
 
@@ -633,6 +650,7 @@ OracleDB.createPool(dbConf)
         } 
 
         if(membersToDeactivate.length) {
+          memberEmailsDeactivated = await getActiveMembers(groupId, connection).then((members: any) => members.filter((m:any)=>membersToDeactivate.includes(m[0])).map((m:any)=>m[1]).join(', '));
           await deactivateGroupMemberIds(groupId, membersToDeactivate, connection)
         }
 
@@ -651,6 +669,7 @@ OracleDB.createPool(dbConf)
         }
 
         if(thresholdsToDeactivate.length) {
+          thresholdInfoDeactivated = await getActiveThresholds(groupId, connection).then((thresholds: any) => thresholds.filter((t:any)=>thresholdsToDeactivate.includes(t[1])).map((t:any)=>t[2]+'-'+t[3]+'-'+t[4]).join(', '));
           await deactivateThresholdIds(groupId, thresholdsToDeactivate, connection)
         }
 
@@ -661,7 +680,11 @@ OracleDB.createPool(dbConf)
           members: groupData.members.filter((member: any) => !membersToDeactivate.includes(member.globalid)),
           thresholds: groupData.thresholds.filter((threshold: any) => !thresholdsToDeactivate.includes(threshold.globalid))
         }
+
+        const memberEmailsAdded = await getActiveMembers(groupId, connection).then((members: any) => members.filter((m:any)=>membersToAdd.includes(m[0])).map((m:any)=>m[1]).join(', '));
+        const thresholdInfoAdded = await getActiveThresholds(groupId, connection).then((thresholds: any) => thresholds.filter((t:any)=>thresholdsToAdd.includes(t[1])).map((t:any)=>t[2]+'-'+t[3]+'-'+t[4]).join(', '));
           
+        actionLogger.info(`Group Updated: ${groupData.groupName}, members added: ${memberEmailsAdded}, members deactivated: ${memberEmailsDeactivated}, thresholds added: ${thresholdInfoAdded}, thresholds deactivated: ${thresholdInfoDeactivated}`)
         res.json(updatedGroup);
       } catch (err) {
         res.status(502).json({ error: 'DB Connection Error: ' + err});
@@ -1078,6 +1101,46 @@ function addThresholdIdToGroups(groupIds: string[], thresholdId: string, connect
         resolve(result);
       }
     })
+  })
+}
+
+function getActiveMembers(groupId: string, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `select
+                    ug.USER_ID,
+                    u.EMAIL
+                    from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} ug
+                    join ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} u on ug.USER_ID = u.GLOBALID
+                    where ug.GROUP_ID = :groupId and ug.ACTIVE <> 0`;
+    connection.execute(query, {groupId}, (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        resolve(result.rows)
+      }
+    });
+  })
+}
+
+function getActiveThresholds(groupId: string, connection: Connection) {
+  return new Promise((resolve, reject) => {
+    const query = `select
+                    tg.THRSHLD_ID,
+                    t.GLOBALID, t.ANALYTE, t.UPPER_LOWER_SPECS, t.LOCCODE
+                    from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} tg
+                    join ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} t on tg.THRSHLD_ID = t.GLOBALID
+                    where tg.GROUP_ID = :groupId and tg.ACTIVE <> 0`;
+    connection.execute(query, {groupId}, (err: any, result: any) => {
+      if(err) {
+        appLogger.error("Error executing query:", err);
+        reject(err)
+      }
+      else {
+        resolve(result.rows)
+      }
+    });
   })
 }
 export default groupsRouter; 
