@@ -312,7 +312,7 @@ OracleDB.createPool(dbConf)
 
 function getAlerts(email: string, connection: Connection) {
   return new Promise((resolve, reject) => {
-    const query = `SELECT \
+    const query = `SELECT DISTINCT\
                     u.GLOBALID as user_id,
                     t.GLOBALID as threshold_id,
                     a.OBJECTID, 
