@@ -1,7 +1,7 @@
 import express from 'express';
 import OracleDB, { Connection } from 'oracledb';
 
-import { WQIMS_DB_CONFIG } from "../util/secrets";
+import { EB_CREDS, WQIMS_DB_CONFIG } from "../util/secrets";
 import { appLogger, actionLogger } from '../util/appLogger';
 import graphHelper from '../util/graph';
 
@@ -153,6 +153,7 @@ OracleDB.createPool(dbConf)
         const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
         await addUserRole(result.GLOBALID, roleId, connection);
       }
+      const ebResult = await addMemberToEB(user);
       connection.commit();
       actionLogger.info('User added', { email: user.email });
       res.json(result);
@@ -210,6 +211,7 @@ OracleDB.createPool(dbConf)
       await deactivateUserRole(id, connection);
 
       connection.commit();
+      await deleteMemberFromEB(id);
       actionLogger.info('User deactivated', { email: user[0].EMAIL });
       res.send(result);
     }
@@ -770,6 +772,83 @@ function findUser(userId: any, connection: Connection) {
       }
     });
   })
+}
+
+function addMemberToEB(user: any) {
+  return new Promise((resolve, reject) => {
+    const postOptions = {
+      method: 'POST',
+      headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          authorization: 'Basic ' + Buffer.from(`${EB_CREDS.username}:${EB_CREDS.password}`).toString('base64')
+      },
+      body: JSON.stringify({
+          firstName: user.name.split(' ')[0],
+          lastName: user.name.split(' ')[1],
+          recordTypeId: EB_CREDS.record_id,
+          groupsName: [
+              'GIS-TEST-Water-Quality-Alerts'
+          ],
+          externalId: user.globalid,
+          paths: [
+              {
+                  waitTime: 0,
+                  pathId: EB_CREDS.sms_id,
+                  countryCode: 'US',
+                  value: user.phonenumber === '' ? user.altphonenumber.replace('-', '') : user.phonenumber.replace('-',''),
+                  quietTimeFrames: [ // would depend on hours of operation
+                      {name: 'M-F 6-6', days: [2, 3, 4, 5, 6], fromHour: 18, fromMin: 0, toHour: 6, toMin: 0},
+                  ]
+              },
+              {
+                  waitTime: 0,
+                  pathId: EB_CREDS.email_id,
+                  countryCode: 'US',
+                  value: user.email,
+              }
+          ],
+          timezoneId: 'America/New_York'
+      })
+    }
+
+    fetch(`https://api.everbridge.net/rest/contacts/${EB_CREDS.organization_id}`, postOptions)
+        .then(response => response.json())
+        .then(data => {
+            console.log('Success:')
+            console.dir(data)
+            resolve(data);
+            console.log('end')
+        })
+        .catch(err => reject(err));
+  });
+}
+
+function deleteMemberFromEB(userId: string) {
+  return new Promise((resolve, reject) => {
+    const deleteOptions = {
+      method: 'DELETE',
+      headers: {
+          accept: 'application/json',
+          authorization: 'Basic ' + Buffer.from(`${EB_CREDS.username}:${EB_CREDS.password}`).toString('base64')
+      }
+    }
+
+    fetch(`https://api.everbridge.net/rest/contacts/${EB_CREDS.organization_id}/${userId}?idType=externalId`, deleteOptions)
+        .then(response => response.json())
+        .then(data => {
+            console.log('Success:')
+            console.dir(data)
+            resolve(data);
+            console.log('end')
+        })
+        .catch(err => reject(err));
+  });
+}
+
+// need to determine if name, phone, or email change
+function updateMemberEBInfo(user: any) {
+
 }
 
 export default usersRouter;

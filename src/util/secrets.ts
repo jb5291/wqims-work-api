@@ -40,6 +40,16 @@ export const BASEURL = process.env["BASEURL"] ? process.env["BASEURL"] as string
 
 export const FE_BASE_URL = process.env["FE_BASE_URL"] ? process.env["FE_BASE_URL"] as string : "";
 
+export const EB_CREDS = {
+    username: get_env_val("EB_UN"),
+    password: get_env_val("EB_PW"),
+    organization_id: get_env_val("EB_ORG_ID"),
+    group_id: get_env_val("EB_WQIMS_GRP_ID"),
+    sms_id: get_env_val("EB_WQIMS_DP_SMS_ID"),
+    email_id: get_env_val("EB_WQIMS_DP_EMAIL_ID"),
+    record_id: get_env_val("EB_WQIMS_RECORD_ID"),
+}
+
 export const WQIMS_DB_CONFIG = {
     username: get_env_val("WQIMS_DB_UN"),
     password: get_env_val("WQIMS_DB_PW"),
