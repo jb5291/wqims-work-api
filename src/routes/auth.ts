@@ -125,10 +125,14 @@ authRouter.get('/logout', async (req, res) => {
   res.json('Logged out');
 })
 
+authRouter.get('/proxyCheck', (req, res) => {
+  res.send(true);
+})
+
 function checkActionPermissions(email: string, action: string, connection: Connection): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const query = `SELECT \
-                    CASE WHEN r.${action} = 1 THEN 'true' ELSE 'false' END AS action_valid \
+                  CASE WHEN r.${action} = 1 THEN 'true' ELSE 'false' END AS action_valid \
                   FROM users u \
                   JOIN user_roles ur ON u.GLOBALID = ur.USER_ID \
                   JOIN roles r ON ur.ROLE_ID = r.ROLE_ID \

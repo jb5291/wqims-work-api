@@ -261,7 +261,7 @@ OracleDB.createPool(dbConf)
       connection = await pool.getConnection();
       const timestamp = getTimeStamp();
 
-      const queryResult = await updateAlertStatus(userName, alertId, status, comments, connection);
+      const queryResult = await updateAlertStatus(userName, alertId, status, comments, connection, timestamp);
 
       switch(status) {
         case "NEW":
@@ -348,7 +348,7 @@ function getAlerts(email: string, connection: Connection) {
                   JOIN
                     ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} a ON t.ANALYSIS = a.ACODE AND t.LOCCODE = a.LOCOCODE
                   WHERE
-                    u.EMAIL = :email AND tg.ACTIVE = 1`;
+                    u.EMAIL = :email AND tg.ACTIVE = 1 AND ug.ACTIVE = 1`;
     connection.execute(query, [email], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result: any) => {
       if(err) {
         appLogger.error(err);
@@ -366,23 +366,22 @@ function getAlerts(email: string, connection: Connection) {
   })
 }
 
-function updateAlertStatus(userName: string, alertId: string, status: string, comments: string, connection: Connection): Promise<any> {
+function updateAlertStatus(userName: string, alertId: string, status: string, comments: string, connection: Connection, timestamp: string): Promise<any> {
   return new Promise((resolve, reject) => {
     let query = '';
     switch(status) {
       case "NEW":
-        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS =:status, ACK_BY='', ACK_TIME='', CLOSED_BY='', CLOSED_TIME='', COMMENTS=:comments WHERE GLOBALID = :alertId`;
+        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS=:status, ACK_BY='', ACK_TIME='', CLOSED_BY='', CLOSED_TIME='', COMMENTS=:comments WHERE GLOBALID=:alertId`;
         break;
       case "ACKNOWLEDGED":
-        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS =:status, ACK_BY=:userName, ACK_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM'), COMMENTS=:comments WHERE GLOBALID = :alertId`;
+        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS=:status, ACK_BY=:userName, ACK_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM'), COMMENTS=:comments WHERE GLOBALID=:alertId`;
         break;
       case "CLOSED":
-        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS =:status, CLOSED_BY=:userName, CLOSED_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM'), COMMENTS=:comments WHERE GLOBALID = :alertId`;
+        query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET STATUS=:status, CLOSED_BY=:userName, CLOSED_TIME=TO_TIMESTAMP(:timestamp, 'YYYY-MM-DD HH:MI:SS.FF AM'), COMMENTS=:comments WHERE GLOBALID=:alertId`;
         break;
       default:
         reject({error: "Invalid status provided. Valid statuses are NEW, ACKNOWLEDGED, and CLOSED"});
     } 
-    const timestamp = getTimeStamp();
     const options = {
       autoCommit: true,
       outFormat: OracleDB.OUT_FORMAT_OBJECT
