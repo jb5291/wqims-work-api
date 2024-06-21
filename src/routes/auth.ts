@@ -135,7 +135,7 @@ authRouter.get('/checkToken', (req, res) => {
     res.status(403).send(status);
   }
   else {
-    res.send(status);
+    res.send(true);
   }
 })
 
