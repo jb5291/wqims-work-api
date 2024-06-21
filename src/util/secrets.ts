@@ -34,11 +34,15 @@ function get_env_val(key:string){
     return val;
 }
 
+export const PROXY_LISTEN_PORT = get_env_val("PORT");
+export const FE_LISTEN_PORT = get_env_val("FE_PORT");
 export const ENVIRONMENT = process.env.NODE_ENV;
 
 export const BASEURL = process.env["BASEURL"] ? process.env["BASEURL"] as string : "";
 
-export const FE_BASE_URL = process.env["FE_BASE_URL"] ? process.env["FE_BASE_URL"] as string : "";
+export const FE_FULL_URL = process.env["FE_FULL_URL"] ? process.env["FE_FULL_URL"] as string : "";
+
+export const ALLOWED_ORIGINS = [BASEURL, FE_FULL_URL, `${BASEURL}:${PROXY_LISTEN_PORT}`];
 
 export const EB_CREDS = {
     username: get_env_val("EB_UN"),
@@ -66,8 +70,6 @@ export const WQIMS_DB_CONFIG = {
 
 export const PORTAL_TOKEN_URL = get_env_val("PORTAL_TOKEN_URL");
 
-export const PROXY_LISTEN_PORT = get_env_val("PORT");
-export const FE_LISTEN_PORT = get_env_val("FE_PORT");
 
 export const JWT_SECRET_KEY = get_env_val("JWT_SECRET_KEY");
 

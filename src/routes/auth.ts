@@ -4,7 +4,7 @@ import OracleDB, { Connection, autoCommit } from "oracledb";
 import jwt from 'jsonwebtoken';
 
 import graph from "../util/graph";
-import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG, JWT_SECRET_KEY, BASEURL, PROXY_LISTEN_PORT, FE_LISTEN_PORT, FE_BASE_URL} from "../util/secrets";
+import { MS_SECRET, MS_CLIENT_ID, MS_TENANT_ID, WQIMS_DB_CONFIG, JWT_SECRET_KEY, BASEURL, PROXY_LISTEN_PORT, FE_FULL_URL} from "../util/secrets";
 import { appLogger, actionLogger } from "../util/appLogger";
 
 export const authRouter = express.Router();
@@ -56,11 +56,11 @@ authRouter.get('/callback', async (req, res) => {
     res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
     actionLogger.info('User logged in', { email: user.mail, ip: ip })
 
-    res.redirect(`${FE_BASE_URL}/login?success=true`);
+    res.redirect(`${FE_FULL_URL}/login?success=true`);
   } catch (error) {
     console.debug(error);
     res.status(500).send(error);
-    res.redirect(`${FE_BASE_URL}/login?success=false`);
+    res.redirect(`${FE_FULL_URL}/login?success=false`);
   }
 })
 
@@ -129,6 +129,16 @@ authRouter.get('/proxyCheck', (req, res) => {
   res.send(true);
 })
 
+authRouter.get('/checkToken', (req, res) => {
+  const status = checkToken(req, res);
+  if(status === 'TokenExpiredError') {
+    res.status(403).send(status);
+  }
+  else {
+    res.send(status);
+  }
+})
+
 function checkActionPermissions(email: string, action: string, connection: Connection): Promise<boolean> {
   return new Promise((resolve, reject) => {
     const query = `SELECT \
@@ -156,13 +166,13 @@ function checkActionPermissions(email: string, action: string, connection: Conne
   })
 }
 
-export function checkToken(req: any, res: any): string {
+export function checkToken(req: any, res: any): string | any {
   let email: string = '';
   jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
     if(err) {
       appLogger.error(err);
-      res.status(403).json(err);
-      return '';
+      return err;
+      // res.status(403).json(err);
     }
     else {
       email = decoded.email;
