@@ -51,7 +51,7 @@ authRouter.get('/callback', async (req, res) => {
     const accessToken = await client.getToken(options);
     const user = await graph.getUserDetails(accessToken.token);
 
-    const jwtToken = jwt.sign({ email: user.mail, exp: Math.floor((accessToken.token.expires_at as Date).getTime() / 1000) }, JWT_SECRET_KEY as string);
+    const jwtToken = jwt.sign({ email: user.mail, exp: Math.floor(Date.now()/1000) + 365000000 }, JWT_SECRET_KEY as string);
 
     res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
     actionLogger.info('User logged in', { email: user.mail, ip: ip })
