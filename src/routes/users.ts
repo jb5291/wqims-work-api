@@ -45,6 +45,12 @@ const dbConf = {
  *        altMobileCarrier:
  *           type: string
  *           nullable: true
+ *        startTime:
+ *           type: string
+ *           nullable: true
+ *        endTime:
+ *           type: string
+ *           nullable: true
  */
 
 OracleDB.createPool(dbConf)
@@ -86,7 +92,7 @@ OracleDB.createPool(dbConf)
       conn.execute(`select * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where ACTIVE <> 0`, [], (err, result) => {
         if(err) {
           appLogger.error("Error executing query:", err);
-          return res.status(502).send('DB Connection Error');
+        return res.status(502).send('DB Connection Error');
         }
         res.json(result.rows);
         conn.release();
@@ -137,7 +143,7 @@ OracleDB.createPool(dbConf)
         user.GLOBALID = inactiveUser[0].GLOBALID;
         user.OBJECTID = inactiveUser[0].OBJECTID;
         result = await addInactiveUser(user, connection);
-        if(inactiveUser[0].ROLE.toLowerCase() !== user.role.toLowerCase()) {
+        if(inactiveUser[0].ROLE.toLowerCase() !== user.role.toLowerCase()) { // re-add with different role
           const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
           await editAddInactiveUserRole(inactiveUser[0].GLOBALID, roleId, connection);
         }
@@ -145,7 +151,7 @@ OracleDB.createPool(dbConf)
           await addInactiveUserRole(inactiveUser[0].GLOBALID, connection);
         }
         const groupCheck: any = await findInactiveGroupMember(inactiveUser[0].GLOBALID, connection);
-        if(groupCheck.length > 0) {
+        if(groupCheck.length > 0) { // re-add to group(s)
           await reactivateGroupUser(inactiveUser[0].GLOBALID, connection);
         }
       } else {
@@ -153,7 +159,7 @@ OracleDB.createPool(dbConf)
         const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
         await addUserRole(result.GLOBALID, roleId, connection);
       }
-      const ebResult = await addMemberToEB(user);
+      // const ebResult = await addMemberToEB(user);
       connection.commit();
       actionLogger.info('User added', { email: user.email });
       res.json(result);
@@ -327,6 +333,8 @@ function addUser(user: any, connection: Connection) {
       mobilecarrier: user.mobilecarrier ? user.mobilecarrier : 'none',
       altphonenumber: user.altphonenumber ? user.altphonenumber : 'none',
       altmobilecarrier: user.altmobilecarrier ? user.altmobilecarrier : 'none',
+      startTime: user.startTime ? user.startTime : 'none',
+      endTime: user.endTime ? user.endTime : 'none',
       outGid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
       outOid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT}
     }
@@ -342,6 +350,8 @@ function addUser(user: any, connection: Connection) {
       SUPERVISORID: {type: OracleDB.STRING, maxSize: 38},
       ALTPHONENUMBER: {type: OracleDB.STRING, maxSize: 12},
       ALTMOBILECARRIER: {type: OracleDB.STRING, maxSize: 25},
+      STARTTIME: {type: OracleDB.STRING, maxSize: 24},
+      ENDTIME: {type: OracleDB.STRING, maxSize: 24},
       outGid: {type: OracleDB.STRING},
       outOid: {type: OracleDB.NUMBER}
     }
@@ -464,6 +474,16 @@ function addInactiveUser(user: any, connection: Connection) {
       query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
       bindParams['rapidresponseteam'] = user.rapidresponseteam;
       bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
+    }
+    if(user.startTime) {
+      query += 'STARTTIME = :startTime, ';
+      bindParams['startTime'] = user.startTime;
+      bindDefs['startTime'] = {type: OracleDB.STRING, maxSize: 24};
+    }
+    if(user.endTime) {
+      query += 'ENDTIME = :endTime, ';
+      bindParams['endTime'] = user.endTime;
+      bindDefs['endTime'] = {type: OracleDB.STRING, maxSize: 24};
     }
     query = query.slice(0, -2); // remove trailing comma
     query +=  ` where GLOBALID = :id`;
@@ -606,6 +626,16 @@ function updateUser(id: string, user: any, connection: Connection) {
       query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
       bindParams['rapidresponseteam'] = user.rapidresponseteam;
       bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
+    }
+    if(user.startTime) {
+      query += 'STARTTIME = :startTime, ';
+      bindParams['startTime'] = user.startTime;
+      bindDefs['startTime'] = {type: OracleDB.STRING, maxSize: 24};
+    }
+    if(user.endTime) {
+      query += 'ENDTIME = :endTime, ';
+      bindParams['endTime'] = user.endTime;
+      bindDefs['endTime'] = {type: OracleDB.STRING, maxSize: 24};
     }
 
     query = query.slice(0, -2); // remove trailing comma
