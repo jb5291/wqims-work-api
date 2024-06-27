@@ -25,9 +25,6 @@ const dbConf = {
  *          type: string
  *        division:
  *          type: string
- *        supervisorID:
- *          type: string
- *          nullable: true
  *        phoneNumber:
  *          type: string
  *        email:
@@ -36,13 +33,7 @@ const dbConf = {
  *          type: string
  *        rapidResponseTeam:
  *           type: integer
- *        mobileCarrier:
- *           type: string
- *           nullable: true
  *        altPhoneNumber:
- *           type: string
- *           nullable: true
- *        altMobileCarrier:
  *           type: string
  *           nullable: true
  *        startTime:
@@ -320,7 +311,7 @@ usersRouter.use('/search', async (req, res) => {
 
 function addUser(user: any, connection: Connection) {
   return new Promise((resolve, reject) => {
-    let query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} (NAME, DEPARTMENT, PHONENUMBER, EMAIL, ROLE, RAPIDRESPONSETEAM, DIVISION, SUPERVISORID, MOBILECARRIER, SECONDARYPHONENUMBER, SECONDARYMOBILECARRIER, ACTIVE) values (:name, :department, :phonenumber, :email, :role, :rapidresponseteam, :division, :supervisorid, :mobilecarrier, :altphonenumber, :altmobilecarrier, 1) returning GLOBALID, OBJECTID into :outGid, :outOid`;
+    let query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} (NAME, DEPARTMENT, PHONENUMBER, EMAIL, ROLE, RAPIDRESPONSETEAM, DIVISION, SECONDARYPHONENUMBER, ACTIVE, STARTTIME, ENDTIME) values (:name, :department, :phonenumber, :email, :role, :rapidresponseteam, :division, :altphonenumber, 1, :starttime, :endtime) returning GLOBALID, OBJECTID into :outGid, :outOid`;
     let bindParams: any = {
       name: user.name ? user.name : 'none',
       department: user.department ? user.department : 'none',
@@ -329,10 +320,7 @@ function addUser(user: any, connection: Connection) {
       role: user.role ? user.role : 'none',
       rapidresponseteam: user.rapidresponseteam ? user.rapidresponseteam : 0,
       division: user.division ? user.division : 'none',
-      supervisorid: user.supervisorid ? user.supervisorid : 'none',
-      mobilecarrier: user.mobilecarrier ? user.mobilecarrier : 'none',
       altphonenumber: user.altphonenumber ? user.altphonenumber : 'none',
-      altmobilecarrier: user.altmobilecarrier ? user.altmobilecarrier : 'none',
       startTime: user.startTime ? user.startTime : 'none',
       endTime: user.endTime ? user.endTime : 'none',
       outGid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
@@ -345,11 +333,7 @@ function addUser(user: any, connection: Connection) {
       PHONENUMBER: {type: OracleDB.STRING, maxSize: 12},
       EMAIL: {type: OracleDB.STRING, maxSize: 128},
       ROLE: {type: OracleDB.STRING, maxSize: 64},
-      RAPIDRESPONSETEAM: {type: OracleDB.NUMBER, maxSize: 5},
-      MOBILECARRIER: {type: OracleDB.STRING, maxSize: 25},
-      SUPERVISORID: {type: OracleDB.STRING, maxSize: 38},
       ALTPHONENUMBER: {type: OracleDB.STRING, maxSize: 12},
-      ALTMOBILECARRIER: {type: OracleDB.STRING, maxSize: 25},
       STARTTIME: {type: OracleDB.STRING, maxSize: 24},
       ENDTIME: {type: OracleDB.STRING, maxSize: 24},
       outGid: {type: OracleDB.STRING},
@@ -455,35 +439,25 @@ function addInactiveUser(user: any, connection: Connection) {
       bindParams['role'] = user.role;
       bindDefs['role'] = {type: OracleDB.STRING, maxSize: 64};
     }
-    if(user.mobilecarrier) {
-      query += 'MOBILECARRIER = :mobilecarrier, ';
-      bindParams['mobilecarrier'] = user.mobilecarrier;
-      bindDefs['mobilecarrier'] = {type: OracleDB.STRING, maxSize: 25};
-    }
     if(user.altphonenumber) {
       query += 'SECONDARYPHONENUMBER = :altphonenumber, ';
       bindParams['altphonenumber'] = user.altphonenumber;
       bindDefs['altphonenumber'] = {type: OracleDB.STRING, maxSize: 12};
-    }
-    if(user.altmobilecarrier) {
-      query += 'SECONDARYMOBILECARRIER = :altmobilecarrier, ';
-      bindParams['altmobilecarrier'] = user.altmobilecarrier;
-      bindDefs['altmobilecarrier'] = {type: OracleDB.STRING, maxSize: 25};
     }
     if(user.rapidresponseteam) {
       query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
       bindParams['rapidresponseteam'] = user.rapidresponseteam;
       bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
     }
-    if(user.startTime) {
-      query += 'STARTTIME = :startTime, ';
-      bindParams['startTime'] = user.startTime;
-      bindDefs['startTime'] = {type: OracleDB.STRING, maxSize: 24};
+    if(user.starttime) {
+      query += 'STARTTIME = :starttime, ';
+      bindParams['starttime'] = user.starttime;
+      bindDefs['starttime'] = {type: OracleDB.STRING, maxSize: 24};
     }
-    if(user.endTime) {
-      query += 'ENDTIME = :endTime, ';
-      bindParams['endTime'] = user.endTime;
-      bindDefs['endTime'] = {type: OracleDB.STRING, maxSize: 24};
+    if(user.endtime) {
+      query += 'ENDTIME = :endtime, ';
+      bindParams['endtime'] = user.endtime;
+      bindDefs['endtime'] = {type: OracleDB.STRING, maxSize: 24};
     }
     query = query.slice(0, -2); // remove trailing comma
     query +=  ` where GLOBALID = :id`;
@@ -607,35 +581,25 @@ function updateUser(id: string, user: any, connection: Connection) {
       bindParams['role'] = user.role;
       bindDefs['role'] = {type: OracleDB.STRING, maxSize: 64};
     }
-    if(user.mobilecarrier) {
-      query += 'MOBILECARRIER = :mobilecarrier, ';
-      bindParams['mobilecarrier'] = user.mobilecarrier;
-      bindDefs['mobilecarrier'] = {type: OracleDB.STRING, maxSize: 25};
-    }
     if(user.altphonenumber) {
       query += 'SECONDARYPHONENUMBER = :altphonenumber, ';
       bindParams['altphonenumber'] = user.altphonenumber;
       bindDefs['altphonenumber'] = {type: OracleDB.STRING, maxSize: 12};
-    }
-    if(user.altmobilecarrier) {
-      query += 'SECONDARYMOBILECARRIER = :altmobilecarrier, ';
-      bindParams['altmobilecarrier'] = user.altmobilecarrier;
-      bindDefs['altmobilecarrier'] = {type: OracleDB.STRING, maxSize: 25};
     }
     if(user.rapidresponseteam) {
       query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
       bindParams['rapidresponseteam'] = user.rapidresponseteam;
       bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
     }
-    if(user.startTime) {
-      query += 'STARTTIME = :startTime, ';
-      bindParams['startTime'] = user.startTime;
-      bindDefs['startTime'] = {type: OracleDB.STRING, maxSize: 24};
+    if(user.starttime) {
+      query += 'STARTTIME = :starttime, ';
+      bindParams['starttime'] = user.starttime;
+      bindDefs['starttime'] = {type: OracleDB.STRING, maxSize: 24};
     }
-    if(user.endTime) {
-      query += 'ENDTIME = :endTime, ';
-      bindParams['endTime'] = user.endTime;
-      bindDefs['endTime'] = {type: OracleDB.STRING, maxSize: 24};
+    if(user.endtime) {
+      query += 'ENDTIME = :endtime, ';
+      bindParams['endtime'] = user.endtime;
+      bindDefs['endtime'] = {type: OracleDB.STRING, maxSize: 24};
     }
 
     query = query.slice(0, -2); // remove trailing comma
