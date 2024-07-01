@@ -346,7 +346,7 @@ function getAlerts(email: string, connection: Connection) {
                   JOIN
                     ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} t ON tg.THRSHLD_ID = t.GLOBALID
                   JOIN
-                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} a ON t.ANALYSIS = a.ACODE AND t.LOCCODE = a.LOCOCODE
+                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} a ON t.GLOBALID = a.THRESHOLD_ID
                   WHERE
                     u.EMAIL = :email AND tg.ACTIVE = 1 AND ug.ACTIVE = 1`;
     connection.execute(query, [email], { outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result: any) => {

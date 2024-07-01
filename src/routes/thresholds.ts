@@ -17,7 +17,7 @@ const dbConf = {
  *    ThresholdData:
  *      type: object
  *      properties:
- *        LOCCODE:
+ *        LOCATION_CODE:
  *          type: string
  *        LOCATION_NAME:
  *          type: string
@@ -35,7 +35,7 @@ const dbConf = {
  *          type: number
  *        CLOSEOUTTIMEOUT:
  *          type: number
- *        CHECKLISTID:
+ *        TEMPLATE_ID:
  *          type: string
  *        SYSTEM:
  *          type: string
@@ -157,7 +157,7 @@ OracleDB.createPool(dbConf)
         result = await addThreshold(threshold, connection);
       }
       connection.commit();
-      actionLogger.info(`Threshold added: ${threshold.ANAYLYTE}-${threshold.UPPER_LOWER_SPECS}-${threshold.LOCCODE}`)
+      actionLogger.info(`Threshold added: ${threshold.ANAYLYTE}-${threshold.UPPER_LOWER_SPECS}-${threshold.LOCATION_CODE}`)
       res.json(result);
     } catch (err) {
       appLogger.error(err);
@@ -210,7 +210,7 @@ OracleDB.createPool(dbConf)
       await deactivateGroupThresholds(thresholdId, connection);
 
       connection.commit();
-      const threshold:any = await connection.execute(`SELECT ANALYTE, UPPER_LOWER_SPECS, LOCCODE FROM ${WQIMS_DB_CONFIG.thresholdTbl} where GLOBALID=:thresholdId`, [thresholdId], { outFormat: OracleDB.OUT_FORMAT_OBJECT});
+      const threshold:any = await connection.execute(`SELECT ANALYTE, UPPER_LOWER_SPECS, LOCATION_CODE FROM ${WQIMS_DB_CONFIG.thresholdTbl} where GLOBALID=:thresholdId`, [thresholdId], { outFormat: OracleDB.OUT_FORMAT_OBJECT});
 
       actionLogger.info(`Threshold deactivated: ${threshold?.rows[0][0]}-${threshold?.rows[0][1]}-${threshold?.rows[0][2]}`)
       res.json(result);
@@ -269,7 +269,7 @@ OracleDB.createPool(dbConf)
       const threshold = req.body;
       const result = await updateThreshold(threshold, connection);
 
-      actionLogger.info(`Threshold updated: ${threshold.ANALYTE}-${threshold.UPPER_LOWER_SPECS}-${threshold.LOCCODE}`)
+      actionLogger.info(`Threshold updated: ${threshold.ANALYTE}-${threshold.UPPER_LOWER_SPECS}-${threshold.LOCATION_CODE}`)
       res.json(result);
     } catch (err) {
       appLogger.error(err);
@@ -307,9 +307,9 @@ function getActiveThresholds(connection: Connection) {
 function findInactiveThreshold(threshold: any, connection: Connection) {
   return new Promise((resolve, reject) => {
     connection.execute(
-      `SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} where SPECS_VALUE is not null and ACTIVE = 0 and LOCCODE=:loccode and ANALYSIS=:analysis`,
+      `SELECT * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} where SPECS_VALUE is not null and ACTIVE = 0 and LOCATION_CODE=:LOCATION_CODE and ANALYSIS=:analysis`,
       [
-        threshold.LOCCODE,
+        threshold.LOCATION_CODE,
         threshold.ANALYSIS
       ],
       { outFormat: OracleDB.OUT_FORMAT_OBJECT },
@@ -355,10 +355,10 @@ function addInactiveThreshold(threshold: any, connection: Connection) {
 function addThreshold(threshold: any, connection: Connection) {
   return new Promise((resolve, reject) => {
     // taking out project name and checklist ID
-    const query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} (LOCCODE, LOCATION_NAME, ANALYSIS, ANALYTE, UPPER_LOWER_SPECS, SPECS_VALUE, ACKTIMEOUT, CLOSEOUTTIMEOUT, SYSTEM, ACTIVE) VALUES (:locCode, :locName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :system, :active) returning GLOBALID, OBJECTID into :outGid, :outOid`;
-    // const test_query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} VALUES (:objectId, :locCode, :locName, :prjName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :checklistId, :globalId)`;
+    const query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} (LOCATION_CODE, LOCATION_NAME, ANALYSIS, ANALYTE, UPPER_LOWER_SPECS, SPECS_VALUE, ACKTIMEOUT, CLOSEOUTTIMEOUT, SYSTEM, ACTIVE) VALUES (:LOCATION_CODE, :locName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :system, :active) returning GLOBALID, OBJECTID into :outGid, :outOid`;
+    // const test_query = `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} VALUES (:objectId, :LOCATION_CODE, :locName, :prjName, :analysis, :analyte, :specs, :specValue, :ackTimeOut, :closeOutTimeOut, :TEMPLATE_ID, :globalId)`;
     const bindParams = {
-      locCode: threshold.LOCCODE,
+      LOCATION_CODE: threshold.LOCATION_CODE,
       locName: threshold.LOCATION_NAME,
       //prjName: threshold.PROJECT_NAME,
       analysis: threshold.ANALYSIS,
@@ -367,7 +367,7 @@ function addThreshold(threshold: any, connection: Connection) {
       specValue: threshold.SPECS_VALUE,
       ackTimeOut: threshold.ACKTIMEOUT,
       closeOutTimeOut: threshold.CLOSEOUTTIMEOUT,
-      //checklistId: threshold.CHECKLISTID,
+      //TEMPLATE_ID: threshold.TEMPLATE_ID,
       system: threshold.SYSTEM,
       active: 1,
       outGid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
@@ -375,7 +375,7 @@ function addThreshold(threshold: any, connection: Connection) {
     }
     /* const test_bindParams = {
       objectId: threshold.objectId,
-      locCode: threshold.locCode,
+      LOCATION_CODE: threshold.LOCATION_CODE,
       locName: threshold.locName,
       prjName: threshold.prjName,
       analysis: threshold.analysis,
@@ -384,7 +384,7 @@ function addThreshold(threshold: any, connection: Connection) {
       specValue: threshold.specValue,
       ackTimeOut: threshold.ackTimeOut,
       closeOutTimeOut: threshold.closeOutTimeOut,
-      checklistId: threshold.checklistId,
+      TEMPLATE_ID: threshold.TEMPLATE_ID,
       globalId: threshold.globalId
     } */
     const options = {
@@ -467,9 +467,9 @@ function updateThreshold(threshold: any, connection: Connection) {
     let query: string = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} set `;
     const bindParams: any = {};
 
-    if (threshold.LOCCODE) {
-      query += `LOCCODE=:LOCCODE, `;
-      bindParams.LOCCODE = threshold.LOCCODE;
+    if (threshold.LOCATION_CODE) {
+      query += `LOCATION_CODE=:LOCATION_CODE, `;
+      bindParams.LOCATION_CODE = threshold.LOCATION_CODE;
     }
     if(threshold.SYSTEM) {
       query += `SYSTEM=:SYSTEM, `;
@@ -507,9 +507,9 @@ function updateThreshold(threshold: any, connection: Connection) {
       query += `CLOSEOUTTIMEOUT=:CLOSEOUTTIMEOUT, `;
       bindParams.CLOSEOUTTIMEOUT = threshold.CLOSEOUTTIMEOUT;
     }
-    if (threshold.CHECKLISTID) {
-      query += `CHECKLISTID=:CHECKLISTID, `;
-      bindParams.CHECKLISTID = threshold.CHECKLISTID;
+    if (threshold.TEMPLATE_ID) {
+      query += `TEMPLATE_ID=:TEMPLATE_ID, `;
+      bindParams.TEMPLATE_ID = threshold.TEMPLATE_ID;
     }
     if(threshold.UNIT) {
       query += `UNIT=:UNIT, `;

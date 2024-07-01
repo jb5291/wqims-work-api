@@ -210,7 +210,7 @@ OracleDB.createPool(dbConf)
         }
          
         const memberNames = members.map((m:any)=>m.name).join(', ');
-        const thresholdNames = members.map((t:any)=>t.ANALYTE+'-'+t.UPPER_LOWER_SPECS+'-'+t.LOCCODE).join(', ');
+        const thresholdNames = members.map((t:any)=>t.ANALYTE+'-'+t.UPPER_LOWER_SPECS+'-'+t.LOCATION_CODE).join(', ');
         actionLogger.info(`Group Added ${groupName}, members: ${memberNames}, thresholds: ${thresholdNames}`);
         res.json(addedGroup);
 
@@ -1128,7 +1128,7 @@ function getActiveThresholds(groupId: string, connection: Connection) {
   return new Promise((resolve, reject) => {
     const query = `select
                     tg.THRSHLD_ID,
-                    t.GLOBALID, t.ANALYTE, t.UPPER_LOWER_SPECS, t.LOCCODE
+                    t.GLOBALID, t.ANALYTE, t.UPPER_LOWER_SPECS, t.LOCATION_CODE
                     from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} tg
                     join ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.thresholdTbl} t on tg.THRSHLD_ID = t.GLOBALID
                     where tg.GROUP_ID = :groupId and tg.ACTIVE <> 0`;
