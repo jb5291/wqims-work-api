@@ -232,67 +232,61 @@ OracleDB.createPool(dbConf)
     const alertId = req.params.alertId;
     const status = req.body?.STATUS === undefined ? 'ERROR' : req.body.STATUS;
     const comments = req.body?.COMMENTS === undefined ? '' : req.body.COMMENTS;
-    let userEmail = '';
+    const change_status = req.body?.CHANGE_STATUS === undefined ? false : req.body.CHANGE_STATUS;
+    let userEmail: any;
     let connection: Connection | null = null;
     let result!: any;
-    jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
-      if (err) {
-        if(err.status === 403) {
-          if(err.hasOwnProperty('error') && err.error.name === 'TokenExpiredError') {
-              appLogger.error(err);
-              res.status(403).send('Unauthorized');
-          }
-          else {
-            appLogger.error(err);
-            res.status(403).send('Forbidden');
-          }
-        }
-        else {
-          appLogger.error(err);
-          res.status(401).send('Unauthorized');
-        }
-      }
-      else {
-        userEmail = decoded.email;
-      }
-    });
+    userEmail = checkToken(req, res);
+    if(userEmail.hasOwnProperty('status')) { // returned error
+      res.status(userEmail.status).json(userEmail)
+    } 
     const userName = userEmail.split('@')[0].replace('.', '_');
     try {
       connection = await pool.getConnection();
       const timestamp = getTimeStamp();
-
-      const queryResult = await updateAlertStatus(userName, alertId, status, comments, connection, timestamp);
-
-      switch(status) {
-        case "NEW":
-          result = {
-            ACK_BY: '',
-            ACK_TIME: '',
-            STATUS: 'NEW',
-            COMMENTS: comments
+      if (change_status) {
+        const queryResult = await updateAlertStatus(userName, alertId, status, comments, connection, timestamp);
+        switch(status) {
+          case "NEW":
+            result = {
+              ACK_BY: '',
+              ACK_TIME: '',
+              STATUS: 'NEW',
+              COMMENTS: comments
+            }
+            break;
+          case "ACKNOWLEDGED":
+            result = {
+              ACK_BY: userName,
+              ACK_TIME: timestamp,
+              STATUS: "ACKNOWLEDGED",
+              COMMENTS: comments
+            }
+            break;
+          case "CLOSED":
+            result = {
+              CLOSED_BY: userName,
+              CLOSED_TIME: timestamp,
+              STATUS: "CLOSED",
+              COMMENTS: comments
+            }
+            break;
+          default:
+            result = {error: "Invalid status provided. Valid statuses are NEW, ACKNOWLEDGED, and CLOSED"};
+        }
+        actionLogger.info(`Alert ${alertId} status changed to ${status}`, { email: userEmail, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress })
+        res.json(result);
+      } else { // updating comments
+        connection.execute(`UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.alertsTbl} SET COMMENTS=:comments WHERE GLOBALID=:alertId`, {comments: comments, alertId: alertId}, { autoCommit: true, outFormat: OracleDB.OUT_FORMAT_OBJECT }, (err, result) => {
+          if (err) {
+            appLogger.error(err);
+            res.status(502).send('Bad Gateway: DB Connection Error');
+          } else {
+            actionLogger.info(`Alert ${alertId} comments have been added`, { email: userEmail, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress })
+            res.json(result);
           }
-          break;
-        case "ACKNOWLEDGED":
-          result = {
-            ACK_BY: userName,
-            ACK_TIME: timestamp,
-            STATUS: "ACKNOWLEDGED",
-            COMMENTS: comments
-          }
-          break;
-        case "CLOSED":
-          result = {
-            CLOSED_BY: userName,
-            CLOSED_TIME: timestamp,
-            STATUS: "CLOSED",
-            COMMENTS: comments
-          }
-          break;
-        default:
-          result = {error: "Invalid status provided. Valid statuses are NEW, ACKNOWLEDGED, and CLOSED"};
+        });
       }
-      actionLogger.info(`Alert ${alertId} status changed to ${status}`, { email: userEmail, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress })
-      res.json(result);
     }
     catch(err: any) {
       appLogger.error(err);

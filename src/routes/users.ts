@@ -23,6 +23,8 @@ const dbConf = {
  *          type: string
  *        department:
  *          type: string
+ *        position:
+ *          type: string
  *        division:
  *          type: string
  *        phoneNumber:
@@ -551,55 +553,60 @@ function updateUser(id: string, user: any, connection: Connection) {
     let bindParams: any = {}
     let bindDefs: any = {}
 
-    if(user.name) {
+    if(user.name !== null && typeof user.name !== 'undefined') {
       query += 'NAME = :name, ';
       bindParams['name'] = user.name;
       bindDefs['name'] = {type: OracleDB.STRING, maxSize: 128};
     }
-    if(user.department) {
+    if(user.department !== null && typeof user.department !== 'undefined') {
       query += 'DEPARTMENT = :department, ';
-      bindParams['department'] = user.department;
+      bindParams['department'] = user.department === '' ? 'none' : user.department;
       bindDefs['department'] = {type: OracleDB.STRING, maxSize: 128};
     }
-    if(user.division) {
+    if(user.position !== null && typeof user.position !== 'undefined') {
+      query += 'POSITION = :position, ';
+      bindParams['position'] = user.position === '' ? 'none' : user.position;
+      bindDefs['position'] = {type: OracleDB.STRING, maxSize: 128};
+    }
+    if(user.division !== null && typeof user.division !== 'undefined') {
       query += 'DIVISION = :division, ';
-      bindParams['division'] = user.division;
+      bindParams['division'] = user.division === '' ? 'none' : user.division;
       bindDefs['division'] = {type: OracleDB.STRING, maxSize: 128};
     }
-    if(user.phonenumber) {
-      query += 'PHONENUMBER = :phonenumber, ';
-      bindParams['phonenumber'] = user.phonenumber;
-      bindDefs['phonenumber'] = {type: OracleDB.STRING, maxSize: 12};
+    if(user.phoneNumber !== null && typeof user.phoneNumber !== 'undefined') {
+      query += 'PHONENUMBER = :phoneNumber, ';
+      bindParams['phoneNumber'] = user.phoneNumber;
+      bindDefs['phoneNumber'] = {type: OracleDB.STRING, maxSize: 12};
     }
-    if(user.email) {
+    if(user.email !== null && typeof user.email !== 'undefined') {
       query += 'EMAIL = :email, ';
       bindParams['email'] = user.email;
       bindDefs['email'] = {type: OracleDB.STRING, maxSize: 128};
     }
-    if(user.role) {
+    if(user.role !== null && typeof user.role !== 'undefined') {
       query += 'ROLE = :role, ';
       bindParams['role'] = user.role;
       bindDefs['role'] = {type: OracleDB.STRING, maxSize: 64};
     }
-    if(user.altphonenumber) {
-      query += 'SECONDARYPHONENUMBER = :altphonenumber, ';
-      bindParams['altphonenumber'] = user.altphonenumber;
-      bindDefs['altphonenumber'] = {type: OracleDB.STRING, maxSize: 12};
+    if(user.rapidResponseTeam !== null && typeof user.rapidResponseTeam !== 'undefined') {
+      query += 'RAPIDRESPONSETEAM = :rapidResponseTeam, ';
+      bindParams['rapidResponseTeam'] = user.rapidResponseTeam;
+      bindDefs['rapidResponseTeam'] = {type: OracleDB.NUMBER, maxSize: 5};
     }
-    if(user.rapidresponseteam) {
-      query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
-      bindParams['rapidresponseteam'] = user.rapidresponseteam;
-      bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
+    if(user.altPhoneNumber !== null && typeof user.altPhoneNumber !== 'undefined') {
+      query += 'SECONDARYPHONENUMBER = :altPhoneNumber, ';
+      bindParams['altPhoneNumber'] = user.altPhoneNumber;
+      bindDefs['altPhoneNumber'] = {type: OracleDB.STRING, maxSize: 12};
     }
-    if(user.starttime) {
-      query += 'STARTTIME = :starttime, ';
-      bindParams['starttime'] = user.starttime;
-      bindDefs['starttime'] = {type: OracleDB.STRING, maxSize: 24};
+    if(user.startTime !== null && typeof user.startTime !== 'undefined') {
+      query += 'STARTTIME = :startTime, ';
+      bindParams['startTime'] = user.startTime;
+      bindDefs['startTime'] = {type: OracleDB.STRING, maxSize: 24};
     }
-    if(user.endtime) {
-      query += 'ENDTIME = :endtime, ';
-      bindParams['endtime'] = user.endtime;
-      bindDefs['endtime'] = {type: OracleDB.STRING, maxSize: 24};
+    if(user.endTime !== null && typeof user.endTime !== 'undefined') {
+      query += 'ENDTIME = :endTime, ';
+      bindParams['endTime'] = user.endTime;
+      bindDefs['endTime'] = {type: OracleDB.STRING, maxSize: 24};
     }
 
     query = query.slice(0, -2); // remove trailing comma
