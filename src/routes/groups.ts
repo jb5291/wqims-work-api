@@ -438,7 +438,7 @@ OracleDB.createPool(dbConf)
         
 
         connection.commit();
-        actionLogger.info(`Group deactivated ${group.groupName}`);
+        actionLogger.info(`Group deactivated ${groupId}`);
         res.json([deleteGrpResult, deleteUsrGrpsResult, deleteThrshldGrpsResult]);
       }
       catch (err) {
