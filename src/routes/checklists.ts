@@ -92,12 +92,12 @@ OracleDB.createPool(dbConf)
      *     requestBody:
      *       required: true
      *       content:
-     *       application/json:
-     *         schema:
-     *           type: object
-     *           properties:
-     *             TemplateName:
-     *               type: string
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               TemplateName:
+     *                 type: string
      *     responses:
      *       200:
      *         description: Successfully created a new checklist template
@@ -115,7 +115,7 @@ OracleDB.createPool(dbConf)
         connection = await pool.getConnection();
         // going to need logic for adding steps and assigning them to correct template
         const result = await connection.execute(
-          `INSERT INTO CHECKLIST_TEMPLATES (TEMPLATE_NAME) VALUES (:templateName)`,
+          `INSERT INTO ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.checklistTemplateTbl} (TEMPLATE_NAME) VALUES (:templateName)`,
           [req.body.TemplateName]
         );
         res.json(result.rows);

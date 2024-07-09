@@ -206,6 +206,8 @@ OracleDB.createPool(dbConf)
   *                 type: string
   *               comments:
   *                 type: string
+  *               change_status:
+  *                 type: boolean
   *    parameters:
   *      - in: path
   *        name: id
@@ -302,6 +304,57 @@ OracleDB.createPool(dbConf)
       }
     }
   });
+})
+
+/** 
+  * @swagger
+  * /alerts/acknowledge:
+  *  post:
+  *    summary: Send everbridge alert 
+  *    description: Updates an alert in wqims.limsalerts based on the provided ID
+  *    tags:
+  *      - Alerts
+  *    requestBody:
+  *      required: true  
+  *      content:
+  *        application/json:
+  *          schema: 
+  *             type: object
+  *             properties:
+  *               status:
+  *                 type: string
+  *               comments:
+  *                 type: string
+  *               change_status:
+  *                 type: boolean
+  *    responses:
+  *      '200':
+  *        description: Alert status changed successfully
+  *        content:
+  *          application/json:
+  *            schema:
+  *              type: object
+  *      '502':
+  *        description: Bad Gateway
+  *        content:
+  *          application/json:
+  *            schema:
+  *              type: string
+  *              example: 'Bad Gateway: DB Connection Error'
+  */
+alertsRouter.post('/acknowledge', async (req, res) => {
+  const alertInfo = req.body.alert;
+  let userEmail: any;
+  userEmail = checkToken(req, res);
+  if(userEmail.hasOwnProperty('status')) { // returned error
+    res.status(userEmail.status).json(userEmail)
+  }
+  const userName = userEmail.split('@')[0].replace('.', '_');
+  try {
+    
+  } catch {
+
+  }
 })
 
 function getAlerts(email: string, connection: Connection) {
