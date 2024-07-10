@@ -56,6 +56,7 @@ authRouter.get('/callback', async (req, res) => {
     res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
     actionLogger.info('User logged in', { email: user.mail, ip: ip })
 
+    
     res.redirect(`${FE_FULL_URL}/login?success=true`);
   } catch (error) {
     console.debug(error);
@@ -130,8 +131,8 @@ authRouter.get('/proxyCheck', (req, res) => {
 })
 
 authRouter.get('/checkToken', (req, res) => {
-  const status = checkToken(req, res);
-  if(status === 'TokenExpiredError') {
+  const status: any = checkToken(req, res);
+  if(status === 'JsonWebTokenError' || status === 'TokenExpiredError') {
     res.status(403).send(status);
   }
   else {
@@ -167,16 +168,16 @@ function checkActionPermissions(email: string, action: string, connection: Conne
 }
 
 export function checkToken(req: any, res: any): string | any {
-  let email: string = '';
+  let status: string = '';
   jwt.verify(req.cookies['token'], JWT_SECRET_KEY, (err: any, decoded: any) => {
     if(err) {
       appLogger.error(err);
-      return err;
-      // res.status(403).json(err);
+      status = err.name;
+      //res.status(401).send('Unauthorized');
     }
     else {
-      email = decoded.email;
+      status = decoded.email;
     }
   })
-  return email;
+  return status;
 }
