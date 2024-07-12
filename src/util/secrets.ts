@@ -67,6 +67,7 @@ export const WQIMS_DB_CONFIG = {
     userRolesTbl: get_env_val("WQIMS_DB_USER_ROLES"),
     rolesTbl: get_env_val("WQIMS_DB_ROLES"),
     checklistTemplateTbl: get_env_val("WQIMS_DB_CHECKLIST_TEMPLATE"),
+    checklistItemTbl: get_env_val("WQIMS_DB_CHECKLIST_ITEMS"),
 }
 
 export const PORTAL_TOKEN_URL = get_env_val("PORTAL_TOKEN_URL");
