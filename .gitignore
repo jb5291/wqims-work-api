@@ -36,3 +36,4 @@ certificate.pem
 certificate.pfx
 package.txt
 private.key
+.env.staging.txt
