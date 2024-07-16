@@ -52,6 +52,7 @@ export const EB_CREDS = {
     sms_id: get_env_val("EB_WQIMS_DP_SMS_ID"),
     email_id: get_env_val("EB_WQIMS_DP_EMAIL_ID"),
     record_id: get_env_val("EB_WQIMS_RECORD_ID"),
+    emp_id: get_env_val("EB_WQIMS_EMP_ID"),
 }
 
 export const WQIMS_DB_CONFIG = {

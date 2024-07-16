@@ -157,7 +157,7 @@ function checkActionPermissions(email: string, action: string, connection: Conne
           appLogger.error(err);
           reject(err);
         }
-        if(result?.rows[0].ACTION_VALID === 'true')
+        if('rows' in result && result.rows.length != 0 && result?.rows[0].ACTION_VALID === 'true')
           resolve(true);
         else {
           resolve(false);

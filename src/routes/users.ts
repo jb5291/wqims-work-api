@@ -152,7 +152,7 @@ OracleDB.createPool(dbConf)
         const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
         await addUserRole(result.GLOBALID, roleId, connection);
       }
-      // const ebResult = await addMemberToEB(user);
+      const ebResult = await addMemberToEB(user);
       connection.commit();
       actionLogger.info('User added', { email: user.email });
       res.json(result);
@@ -275,6 +275,7 @@ OracleDB.createPool(dbConf)
       const result = await updateUser(id, user, connection);
       const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
       await updateUserRole(id, roleId, connection);
+      await updateMemberEBInfo(user);
 
       connection.commit();
       actionLogger.info('User updated', { email: user.email });
@@ -777,6 +778,10 @@ function findUser(userId: any, connection: Connection) {
 
 function addMemberToEB(user: any) {
   return new Promise((resolve, reject) => {
+    const startHour = user.starttime.includes('PM') ? parseInt(user.starttime.split(':')[0]) + 12 : parseInt(user.starttime.split(':')[0]);
+    const startMinute = parseInt(user.starttime.split(':')[1].split(' ')[0]);
+    const endHour = user.endtime.includes('PM') ? parseInt(user.endtime.split(':')[0]) + 12 : parseInt(user.endtime.split(':')[0]);
+    const endMinute = parseInt(user.endtime.split(':')[1].split(' ')[0]);
     const postOptions = {
       method: 'POST',
       headers: {
@@ -787,19 +792,19 @@ function addMemberToEB(user: any) {
       body: JSON.stringify({
           firstName: user.name.split(' ')[0],
           lastName: user.name.split(' ')[1],
-          recordTypeId: EB_CREDS.record_id,
+          recordTypeId: EB_CREDS.emp_id,
           groupsName: [
               'GIS-TEST-Water-Quality-Alerts'
           ],
-          externalId: user.globalid,
+          externalId: user.GLOBALID,
           paths: [
               {
                   waitTime: 0,
                   pathId: EB_CREDS.sms_id,
                   countryCode: 'US',
-                  value: user.phonenumber === '' ? user.altphonenumber.replace('-', '') : user.phonenumber.replace('-',''),
+                  value: !user.phonenumber || user.phonenumber === '' ? user.altphonenumber.replace(/\-/g, '') : user.phonenumber.replace(/\-/g,''),
                   quietTimeFrames: [ // would depend on hours of operation
-                      {name: 'M-F 6-6', days: [2, 3, 4, 5, 6], fromHour: 18, fromMin: 0, toHour: 6, toMin: 0},
+                      {name: 'Hours of Operation M-F', days: [1,2,3,4,5], fromHour: endHour, fromMin: endMinute, toHour: startHour, toMin: startMinute},
                   ]
               },
               {
@@ -849,7 +854,57 @@ function deleteMemberFromEB(userId: string) {
 
 // need to determine if name, phone, or email change
 function updateMemberEBInfo(user: any) {
+  return new Promise((resolve, reject) => {
+    const startHour = user.starttime.includes('PM') ? parseInt(user.starttime.split(':')[0]) + 12 : parseInt(user.starttime.split(':')[0]);
+    const startMinute = parseInt(user.starttime.split(':')[1].split(' ')[0]);
+    const endHour = user.endtime.includes('PM') ? parseInt(user.endtime.split(':')[0]) + 12 : parseInt(user.endtime.split(':')[0]);
+    const endMinute = parseInt(user.endtime.split(':')[1].split(' ')[0]);
+    const updateOptions = {
+      method: 'PUT',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        authorization: 'Basic ' + Buffer.from(`${EB_CREDS.username}:${EB_CREDS.password}`).toString('base64')
+      },
+      body: JSON.stringify({
+          firstName: user.name.split(' ')[0],
+          lastName: user.name.split(' ')[1],
+          recordTypeId: EB_CREDS.emp_id,
+          groupsName: [
+              'GIS-TEST-Water-Quality-Alerts'
+          ],
+          externalId: user.globalid,
+          paths: [
+              {
+                  waitTime: 0,
+                  pathId: EB_CREDS.sms_id,
+                  countryCode: 'US',
+                  value: !user.phonenumber || user.phonenumber === '' ? user.altphonenumber.replace(/\-/g, '') : user.phonenumber.replace(/\-/g,''),
+                  quietTimeFrames: [ // would depend on hours of operation
+                      {name: 'Hours of Operation', days: [1,2,3,4,5], fromHour: startHour, fromMin: startMinute, toHour: endHour, toMin: endMinute},
+                  ]
+              },
+              {
+                  waitTime: 0,
+                  pathId: EB_CREDS.email_id,
+                  countryCode: 'US',
+                  value: user.email,
+              }
+          ],
+          timezoneId: 'America/New_York'
+      })
+    }
 
+    fetch(`https://api.everbridge.net/rest/contacts/${EB_CREDS.organization_id}/${user.globalid}?idType=externalId`, updateOptions)
+        .then(response => response.json())
+        .then(data => {
+            console.log('Success:')
+            console.dir(data)
+            resolve(data);
+            console.log('end')
+        })
+        .catch(err => reject(err));
+  })
 }
 
 export default usersRouter;
