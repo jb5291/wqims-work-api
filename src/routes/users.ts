@@ -1,7 +1,7 @@
 import express from 'express';
 import OracleDB, { Connection } from 'oracledb';
 
-import { EB_CREDS, WQIMS_DB_CONFIG } from "../util/secrets";
+import { EB_CREDS, WQIMS_DB_CONFIG, WQIMS_REST_INFO } from "../util/secrets";
 import { appLogger, actionLogger } from '../util/appLogger';
 import graphHelper from '../util/graph';
 
@@ -46,10 +46,6 @@ const dbConf = {
  *           nullable: true
  */
 
-OracleDB.createPool(dbConf)
-.then(pool => {
-  appLogger.info('Connection pool created for users');
-
   /**
    * @swagger
    * /users:
@@ -75,23 +71,25 @@ OracleDB.createPool(dbConf)
    *              type: string
    *              example: 'Bad Gateway: DB Connection Error'
    */
-  usersRouter.get('/', async (req, res) => {
-    pool.getConnection((err, conn) => {
-      if(err) {
-        appLogger.error('Error getting connection: ', err);
-        return res.status(502).send('DB Connection Error');
-      }
-
-      conn.execute(`select * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where ACTIVE <> 0`, [], (err, result) => {
-        if(err) {
-          appLogger.error("Error executing query:", err);
-        return res.status(502).send('DB Connection Error');
-        }
-        res.json(result.rows);
-        conn.release();
-      });
-    });
-  });
+usersRouter.get('/', async (req, res) => {
+  try {
+    const token = await getToken();
+    const options = {
+      method: 'POST',
+      accept: 'application/json',
+    }
+    const query = 'ACTIVE <> 0';
+    fetch(`${WQIMS_REST_INFO.url}/0/query?where=${query}&outFields=*&f=json&token=${token}`)
+      .then(response => response.json())
+      .then(data => {
+        // console.debug(data);
+        res.json(data);
+      })
+  }
+  catch (error) {
+    res.status(500).send(error);
+  }
+});
 
   /**
    * @swagger
@@ -121,184 +119,326 @@ OracleDB.createPool(dbConf)
    *            schema:
    *              type: string
    *              example: 'Bad Gateway: DB Connection Error'
-   */    
-  usersRouter.put('/', async (req, res) => {
-    let connection: Connection | null = null;
-    let result: any;
-
-    try {
-      connection = await pool.getConnection();
-
-      const user = req.body;
-      const inactiveUser: any = await findInactiveUser(user.email, connection);
-
-      if(inactiveUser.length > 0) {
-        user.GLOBALID = inactiveUser[0].GLOBALID;
-        user.OBJECTID = inactiveUser[0].OBJECTID;
-        result = await addInactiveUser(user, connection);
-        if(inactiveUser[0].ROLE.toLowerCase() !== user.role.toLowerCase()) { // re-add with different role
-          const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
-          await editAddInactiveUserRole(inactiveUser[0].GLOBALID, roleId, connection);
+   */   
+usersRouter.put('/', async (req, res) => {
+  try {
+    const token = await getToken();
+    const query = `EMAIL = ${req.body.email}`;
+    const options = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(req.body)
+    }
+    fetch(`${WQIMS_REST_INFO.url}/0/query?where=${query}&outFields=GLOBALID,ACTIVE,ROLE&f=json&token=${token}`)
+      .then(response => response.json())
+      .then(data => {
+        if(data.features.length > 0) {
+          if(data.features[0].attributes.ACTIVE === 0) {
+            // set Active to one, check if role is different
+            fetch(`${WQIMS_REST_INFO.url}/0/updateFeatures?f=json&token=${token}`, options)
+              .then(response => response.json())
+              .then(async data => {
+                res.json(data);
+                // set user_role to active
+                if(data.features[0].attributes.ROLE.toLowerCase() !== req.body.role.toLowerCase()) {
+                  OracleDB.getConnection(dbConf)
+                  .then(async connection => {
+                    const roleId: any = await getRoleId(req.body.role.toLowerCase(), connection);
+                    await editAddInactiveUserRole(data.features[0].attributes.GLOBALID, roleId, connection);
+                    connection.commit();
+                    connection.release();
+                  });
+                } else {
+                  OracleDB.getConnection(dbConf)
+                  .then(async connection => {
+                    await addInactiveUserRole(data.features[0].attributes.GLOBALID, connection);
+                    connection.commit();
+                    connection.release();
+                  });
+                }
+              })
+          }
+          else {
+            res.status(400).send('User already exists');
+          }
         }
         else {
-          await addInactiveUserRole(inactiveUser[0].GLOBALID, connection);
+          fetch(`${WQIMS_REST_INFO.url}/0/addFeatures?f=json&token=${token}`, options)
+            .then(response => response.json())
+            .then(data => {
+              OracleDB.getConnection(dbConf)
+              .then(async connection => {
+                const roleId: any = await getRoleId(req.body.role.toLowerCase(), connection);
+                await addUserRole(data.features[0].attributes.GLOBALID, roleId, connection);
+                connection.commit();
+                connection.release();
+              })
+              res.json(data);
+            })
         }
-        const groupCheck: any = await findInactiveGroupMember(inactiveUser[0].GLOBALID, connection);
-        if(groupCheck.length > 0) { // re-add to group(s)
-          await reactivateGroupUser(inactiveUser[0].GLOBALID, connection);
-        }
-      } else {
-        result = await addUser(user, connection);
-        const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
-        await addUserRole(result.GLOBALID, roleId, connection);
-      }
-      // const ebResult = await addMemberToEB(user);
-      connection.commit();
-      actionLogger.info('User added', { email: user.email });
-      res.json(result);
-    }
-    catch (error) {
-      appLogger.error(error);
-      connection?.rollback();
-      res.status(502).send('DB Connection Error, operation rolled back');
-    }
-    finally {
-      if(connection) {
-        connection.release((err: any) => {
-          if(err) {
-            appLogger.error('Error releasing connection:', err);
-          }
-        });
-      }
-    }
-  });
-
-  /**
-   * @swagger
-   * /users/{id}:
-   *  delete:
-   *    summary: Deactivates a user from wqims.users
-   *    description: Deactivates a user from wqims.users based on the provided ID
-   *    tags:
-   *      - Users
-   *    parameters:
-   *      - in: path
-   *        name: id
-   *        required: true
-   *        description: The ID of the user to deactivate
-   *        schema:
-   *          type: string
-   *    responses:
-   *      '200':
-   *        description: User deactivated successfully
-   *      '502':
-   *        description: Bad Gateway
-   *        content:
-   *          application/json:
-   *            schema:
-   *              type: string
-   *              example: 'Bad Gateway: DB Connection Error'
-   */
-  usersRouter.delete('/:id', async (req, res) => {
-    let connection: Connection | null = null;
-    try {
-      connection = await pool.getConnection();
-      const id = req.params.id;
-      const user: any = await findUser(id, connection);
-      const result = await deactivateUser(id, connection);
-      await deactivateGroupUser(id, connection);
-      await deactivateUserRole(id, connection);
-
-      connection.commit();
-      await deleteMemberFromEB(id);
-      actionLogger.info('User deactivated', { email: user[0].EMAIL });
-      res.send(result);
-    }
-    catch (error) {
-      appLogger.error(error);
-      connection?.rollback();
-      res.status(502).send('DB Connection Error, operation rolled back');
-    }
-    finally {
-      if(connection) {
-        connection.release((err: any) => {
-          if(err) {
-            appLogger.error('Error releasing connection:', err);
-          }
-        });
-      }
-    }
-  });
-
-  /** 
-   * @swagger
-  * /users/{id}:
-  *  patch:
-  *    summary: Update a user in wqims.users
-  *    description: Updates a user in wqims.users based on the provided ID
-  *    tags:
-  *      - Users
-  *    parameters:
-  *      - in: path
-  *        name: id
-  *        required: true
-  *        description: The ID of the user to update
-  *        schema:
-  *          type: string
-  *    requestBody:
-  *      required: true
-  *      content:
-  *        application/json:
-  *          schema:
-  *            $ref: '#/components/schemas/UserData'
-  *    responses:
-  *      '200':
-  *        description: User updated successfully
-  *        content:
-  *          application/json:
-  *            schema:
-  *              type: object
-  *      '502':
-  *        description: Bad Gateway
-  *        content:
-  *          application/json:
-  *            schema:
-  *              type: string
-  *              example: 'Bad Gateway: DB Connection Error'
-  */
-  usersRouter.patch('/:id', async (req, res) => {
-    let connection: Connection | null = null;
-    try {
-      connection = await pool.getConnection();
-      const id = req.params.id;
-      const user = req.body;
-      const result = await updateUser(id, user, connection);
-      const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
-      await updateUserRole(id, roleId, connection);
-
-      connection.commit();
-      actionLogger.info('User updated', { email: user.email });
-      res.send(result);
-    }
-    catch (error) {
-      appLogger.error(error);
-      connection?.rollback();
-      res.status(502).send('DB Connection Error, operation rolled back');
-    }
-    finally {
-      if(connection) {
-        connection.release((err: any) => {
-          if(err) {
-            appLogger.error('Error releasing connection:', err);
-          }
-        });
-      }
-    }
-  });
+      })
+  }
+  catch (error) {
+    res.status(500).send(error)
+  }
 })
-.catch(error => {
-  appLogger.error("Error creating connection pool:", error)
-})
+
+// OracleDB.createPool(dbConf)
+// .then(pool => {
+//   appLogger.info('Connection pool created for users');
+
+//   /**
+//    * @swagger
+//    * /users:
+//    *  get:
+//    *    summary: Get list of users
+//    *    description: Gets a list of groups from DSNGIST wqims.users
+//    *    tags: 
+//    *      - Users
+//    *    responses:
+//    *      '200':
+//    *        description: A list of users
+//    *        content:
+//    *          application/json:
+//    *            schema:
+//    *              type: array
+//    *              items:
+//    *                $ref: '#/components/schemas/UserData'
+//    *      '502':
+//    *        description: Bad Gateway
+//    *        content:
+//    *          application/json:
+//    *            schema:
+//    *              type: string
+//    *              example: 'Bad Gateway: DB Connection Error'
+//    */
+//   /* usersRouter.get('/', async (req, res) => {
+//     pool.getConnection((err, conn) => {
+//       if(err) {
+//         appLogger.error('Error getting connection: ', err);
+//         return res.status(502).send('DB Connection Error');
+//       }
+
+//       conn.execute(`select * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where ACTIVE <> 0`, [], (err, result) => {
+//         if(err) {
+//           appLogger.error("Error executing query:", err);
+//         return res.status(502).send('DB Connection Error');
+//         }
+//         res.json(result.rows);
+//         conn.release();
+//       });
+//     });
+//   }); */
+
+//   /**
+//    * @swagger
+//    * /users:
+//    *  put:
+//    *    summary: Add a new user to wqims.users
+//    *    description: Adds a new user to wqims.users table
+//    *    tags:
+//    *      - Users
+//    *    requestBody:
+//    *      required: true
+//    *      content:
+//    *        application/json:
+//    *          schema:
+//    *            $ref: '#/components/schemas/UserData'
+//    *    responses:
+//    *      '200':
+//    *        description: User added successfully
+//    *        content:
+//    *          application/json:
+//    *            schema:
+//    *              type: object
+//    *      '502':
+//    *        description: Bad Gateway
+//    *        content:
+//    *          application/json:
+//    *            schema:
+//    *              type: string
+//    *              example: 'Bad Gateway: DB Connection Error'
+//    */    
+//   usersRouter.put('/', async (req, res) => {
+//     let connection: Connection | null = null;
+//     let result: any;
+
+//     try {
+//       connection = await pool.getConnection();
+
+//       const user = req.body;
+//       const inactiveUser: any = await findInactiveUser(user.email, connection);
+
+//       if(inactiveUser.length > 0) {
+//         user.GLOBALID = inactiveUser[0].GLOBALID;
+//         user.OBJECTID = inactiveUser[0].OBJECTID;
+//         result = await addInactiveUser(user, connection);
+//         if(inactiveUser[0].ROLE.toLowerCase() !== user.role.toLowerCase()) { // re-add with different role
+//           const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
+//           await editAddInactiveUserRole(inactiveUser[0].GLOBALID, roleId, connection);
+//         }
+//         else {
+//           await addInactiveUserRole(inactiveUser[0].GLOBALID, connection);
+//         }
+//         const groupCheck: any = await findInactiveGroupMember(inactiveUser[0].GLOBALID, connection);
+//         if(groupCheck.length > 0) { // re-add to group(s)
+//           await reactivateGroupUser(inactiveUser[0].GLOBALID, connection);
+//         }
+//       } else {
+//         result = await addUser(user, connection);
+//         const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
+//         await addUserRole(result.GLOBALID, roleId, connection);
+//       }
+//       // const ebResult = await addMemberToEB(user);
+//       connection.commit();
+//       actionLogger.info('User added', { email: user.email });
+//       res.json(result);
+//     }
+//     catch (error) {
+//       appLogger.error(error);
+//       connection?.rollback();
+//       res.status(502).send('DB Connection Error, operation rolled back');
+//     }
+//     finally {
+//       if(connection) {
+//         connection.release((err: any) => {
+//           if(err) {
+//             appLogger.error('Error releasing connection:', err);
+//           }
+//         });
+//       }
+//     }
+//   });
+
+//   /**
+//    * @swagger
+//    * /users/{id}:
+//    *  delete:
+//    *    summary: Deactivates a user from wqims.users
+//    *    description: Deactivates a user from wqims.users based on the provided ID
+//    *    tags:
+//    *      - Users
+//    *    parameters:
+//    *      - in: path
+//    *        name: id
+//    *        required: true
+//    *        description: The ID of the user to deactivate
+//    *        schema:
+//    *          type: string
+//    *    responses:
+//    *      '200':
+//    *        description: User deactivated successfully
+//    *      '502':
+//    *        description: Bad Gateway
+//    *        content:
+//    *          application/json:
+//    *            schema:
+//    *              type: string
+//    *              example: 'Bad Gateway: DB Connection Error'
+//    */
+//   usersRouter.delete('/:id', async (req, res) => {
+//     let connection: Connection | null = null;
+//     try {
+//       connection = await pool.getConnection();
+//       const id = req.params.id;
+//       const user: any = await findUser(id, connection);
+//       const result = await deactivateUser(id, connection);
+//       await deactivateGroupUser(id, connection);
+//       await deactivateUserRole(id, connection);
+
+//       connection.commit();
+//       await deleteMemberFromEB(id);
+//       actionLogger.info('User deactivated', { email: user[0].EMAIL });
+//       res.send(result);
+//     }
+//     catch (error) {
+//       appLogger.error(error);
+//       connection?.rollback();
+//       res.status(502).send('DB Connection Error, operation rolled back');
+//     }
+//     finally {
+//       if(connection) {
+//         connection.release((err: any) => {
+//           if(err) {
+//             appLogger.error('Error releasing connection:', err);
+//           }
+//         });
+//       }
+//     }
+//   });
+
+//   /** 
+//    * @swagger
+//   * /users/{id}:
+//   *  patch:
+//   *    summary: Update a user in wqims.users
+//   *    description: Updates a user in wqims.users based on the provided ID
+//   *    tags:
+//   *      - Users
+//   *    parameters:
+//   *      - in: path
+//   *        name: id
+//   *        required: true
+//   *        description: The ID of the user to update
+//   *        schema:
+//   *          type: string
+//   *    requestBody:
+//   *      required: true
+//   *      content:
+//   *        application/json:
+//   *          schema:
+//   *            $ref: '#/components/schemas/UserData'
+//   *    responses:
+//   *      '200':
+//   *        description: User updated successfully
+//   *        content:
+//   *          application/json:
+//   *            schema:
+//   *              type: object
+//   *      '502':
+//   *        description: Bad Gateway
+//   *        content:
+//   *          application/json:
+//   *            schema:
+//   *              type: string
+//   *              example: 'Bad Gateway: DB Connection Error'
+//   */
+//   usersRouter.patch('/:id', async (req, res) => {
+//     let connection: Connection | null = null;
+//     try {
+//       connection = await pool.getConnection();
+//       const id = req.params.id;
+//       const user = req.body;
+//       const result = await updateUser(id, user, connection);
+//       const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
+//       await updateUserRole(id, roleId, connection);
+
+//       connection.commit();
+//       actionLogger.info('User updated', { email: user.email });
+//       res.send(result);
+//     }
+//     catch (error) {
+//       appLogger.error(error);
+//       connection?.rollback();
+//       res.status(502).send('DB Connection Error, operation rolled back');
+//     }
+//     finally {
+//       if(connection) {
+//         connection.release((err: any) => {
+//           if(err) {
+//             appLogger.error('Error releasing connection:', err);
+//           }
+//         });
+//       }
+//     }
+//   });
+// })
+// .catch(error => {
+//   appLogger.error("Error creating connection pool:", error)
+// })
 
 usersRouter.use('/search', async (req, res) => {
   try {
@@ -845,6 +985,29 @@ function deleteMemberFromEB(userId: string) {
         })
         .catch(err => reject(err));
   });
+}
+
+function getToken(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const options = {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: `grant_type=client_credentials&client_id=${WQIMS_REST_INFO.appId}&client_secret=${WQIMS_REST_INFO.secret}`
+    }
+  
+    fetch(WQIMS_REST_INFO.token_url, options)
+      .then(response => response.json())
+      .then(data => {
+        resolve(data.access_token);
+      })
+      .catch(err => {
+        console.error(err);
+        reject(err);
+      })
+  })
 }
 
 // need to determine if name, phone, or email change

@@ -70,6 +70,13 @@ export const WQIMS_DB_CONFIG = {
     checklistItemTbl: get_env_val("WQIMS_DB_CHECKLIST_ITEMS"),
 }
 
+export const WQIMS_REST_INFO = {
+    appId: get_env_val("WQIMS_GIS_APP_ID"),
+    secret: get_env_val("WQIMS_GIS_APP_SECRET"),
+    url: get_env_val("WQIMS_REST_ROOT"),
+    token_url: get_env_val("WQIMS_TOKEN_URL"),
+}
+
 export const PORTAL_TOKEN_URL = get_env_val("PORTAL_TOKEN_URL");
 
 
