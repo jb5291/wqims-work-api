@@ -71,10 +71,19 @@ export const WQIMS_DB_CONFIG = {
 }
 
 export const WQIMS_REST_INFO = {
-    appId: get_env_val("WQIMS_GIS_APP_ID"),
-    secret: get_env_val("WQIMS_GIS_APP_SECRET"),
+    //apiKey: get_env_val("WQIMS_REST_API_KEY"),
+    appId: get_env_val("WQIMS_REST_APP_ID"),
+    secret: get_env_val("WQIMS_REST_APP_SECRET"),
     url: get_env_val("WQIMS_REST_ROOT"),
     token_url: get_env_val("WQIMS_TOKEN_URL"),
+    alerts_lyr_id: get_env_val("WQIMS_ALERTS_LYR_ID"),
+    users_lyr_id: get_env_val("WQIMS_USERS_LYR_ID"),
+    thresholds_lyr_id: get_env_val("WQIMS_THRESHOLDS_LYR_ID"),
+    roles_lyr_id: get_env_val("WQIMS_ROLES_LYR_ID"),
+    groups_lyr_id: get_env_val("WQIMS_GROUPS_LYR_ID"),
+    users_groups_lyr_id: get_env_val("WQIMS_USERS_GROUPS_LYR_ID"),
+    users_roles_lyr_id: get_env_val("WQIMS_USERS_ROLES_LYR_ID"),
+    thresholds_groups_lyr_id: get_env_val("WQIMS_THRESHOLDS_GROUPS_LYR_ID"),
 }
 
 export const PORTAL_TOKEN_URL = get_env_val("PORTAL_TOKEN_URL");

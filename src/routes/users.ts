@@ -1,7 +1,10 @@
 import express from 'express';
 import OracleDB, { Connection } from 'oracledb';
+import axios, { AxiosResponse } from 'axios';
+import { ApiKeyManager, ApplicationCredentialsManager, ArcGISIdentityManager, request } from '@esri/arcgis-rest-request';
+import { addFeatures, updateFeatures, deleteFeatures, queryFeatures, IQueryFeaturesResponse, IQueryResponse } from '@esri/arcgis-rest-feature-service';
 
-import { EB_CREDS, WQIMS_DB_CONFIG, WQIMS_REST_INFO } from "../util/secrets";
+import { BASEURL, EB_CREDS, WQIMS_DB_CONFIG, WQIMS_REST_INFO } from "../util/secrets";
 import { appLogger, actionLogger } from '../util/appLogger';
 import graphHelper from '../util/graph';
 
@@ -44,6 +47,84 @@ const dbConf = {
  *        endTime:
  *           type: string
  *           nullable: true
+ *    ArcGISAddUserResponse:
+ *      type: object
+ *      properties:
+ *        addResults:
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              objectId:
+ *                type: number
+ *              globalId:
+ *                type: string
+ *              success:
+ *                type: boolean
+ *              error:
+ *                type: object
+ *                properties: 
+ *                  code:
+ *                    type: number
+ *                  description:
+ *                    type: string
+ *    ArcGISGetUsersResponse:
+ *      type: object
+ *      properties:
+ *        objectIdFieldName: 
+ *          type: string
+ *        globalIdFieldName: 
+ *          type: string
+ *        hasZ:
+ *          type: boolean
+ *        hasM:
+ *          type: boolean
+ *        fields: 
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              name:
+ *                type: string
+ *              alias:
+ *                type: string
+ *              type:
+ *                type: string
+ *              length:
+ *                type: number
+ *        features:
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              attributes:
+ *                type: object
+ *                properties:
+ *                  name:
+ *                    type: string
+ *                  department:
+ *                    type: string
+ *                  position:
+ *                    type: string
+ *                  division:
+ *                    type: string
+ *                  phoneNumber:
+ *                    type: string
+ *                  email:
+ *                    type: string
+ *                  role:
+ *                    type: string
+ *                  rapidResponseTeam:
+ *                    type: integer
+ *                  altPhoneNumber:
+ *                    type: string
+ *                    nullable: true
+ *                  startTime:
+ *                    type: string
+ *                    nullable: true
+ *                  endTime:
+ *                    type: string
+ *                    nullable: true
  */
 
   /**
@@ -60,34 +141,68 @@ const dbConf = {
    *        content:
    *          application/json:
    *            schema:
-   *              type: array
-   *              items:
-   *                $ref: '#/components/schemas/UserData'
-   *      '502':
-   *        description: Bad Gateway
+   *              $ref: '#/components/schemas/ArcGISGetUsersResponse'
+   *      '500':
+     *        description: Internal Server Error
    *        content:
    *          application/json:
    *            schema:
    *              type: string
-   *              example: 'Bad Gateway: DB Connection Error'
+   *              example: 'Internal Server Error'
    */
 usersRouter.get('/', async (req, res) => {
   try {
-    const token = await getToken();
-    const options = {
-      method: 'POST',
-      accept: 'application/json',
+    const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
+      clientId: WQIMS_REST_INFO.appId,
+      clientSecret: WQIMS_REST_INFO.secret,
+    })
+    //const token = await getToken();
+    /* const options = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      timeout: 5000
+    }; */
+    /* request(`${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`, {
+      authentication: session
+    }).then((response: any) => {
+      console.debug(response);
+    }) */
+    // const requestUrl = `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}/query?where=${query}&outFields=*&f=json&token=${token}`
+    // const response = await axios.get(requestUrl, options)
+    queryFeatures({
+      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
+      where: '1=1',
+      authentication: session
+    }).then((response: IQueryFeaturesResponse | IQueryResponse) => {
+      console.debug(response);
+      //if(response.results.length) 
+    }).catch((error: any) => {
+      appLogger.error('User GET error:', error);
+      res.status(500).send({
+        error: error.message,
+        message: 'User GET error'
+      });
+    });
+    /* if('data' in response) {
+      if('error' in response.data) {
+        appLogger.error('User GET error:', response.data.error);
+       throw new Error(response.data.error.message);
+      }
+      res.json(response.data);
     }
-    const query = 'ACTIVE <> 0';
-    fetch(`${WQIMS_REST_INFO.url}/0/query?where=${query}&outFields=*&f=json&token=${token}`)
-      .then(response => response.json())
-      .then(data => {
-        // console.debug(data);
-        res.json(data);
-      })
+    else {
+      appLogger.error('User GET error:', response);
+      throw new Error('Error getting data');
+    } */
   }
-  catch (error) {
-    res.status(500).send(error);
+  catch (error: any) {
+    appLogger.error('User GET Error:', error.stack)
+    res.status(500).send({
+      error: error.message,
+      message: 'User GET error'
+       });
   }
 });
 
@@ -111,75 +226,75 @@ usersRouter.get('/', async (req, res) => {
    *        content:
    *          application/json:
    *            schema:
-   *              type: object
-   *      '502':
-   *        description: Bad Gateway
+   *              $ref: '#/components/schemas/ArcGISAddUserResponse'
+   *      '500':
+   *        description: Internal Server Error
    *        content:
    *          application/json:
    *            schema:
    *              type: string
-   *              example: 'Bad Gateway: DB Connection Error'
+   *              example: 'Internal Server Error'
    */   
 usersRouter.put('/', async (req, res) => {
   try {
-    const token = await getToken();
-    const query = `EMAIL = ${req.body.email}`;
-    const options = {
-      method: 'POST',
+    const token: string = await getToken();
+    const inactiveUserQuery: string = `EMAIL='${req.body.email}' AND ACTIVE=0`;
+    const options: any = {
       headers: {
+        accept: 'application/json',
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(req.body)
+        Authorization: `Bearer ${token}`
+      }
     }
-    fetch(`${WQIMS_REST_INFO.url}/0/query?where=${query}&outFields=GLOBALID,ACTIVE,ROLE&f=json&token=${token}`)
-      .then(response => response.json())
-      .then(data => {
-        if(data.features.length > 0) {
-          if(data.features[0].attributes.ACTIVE === 0) {
-            // set Active to one, check if role is different
-            fetch(`${WQIMS_REST_INFO.url}/0/updateFeatures?f=json&token=${token}`, options)
-              .then(response => response.json())
-              .then(async data => {
-                res.json(data);
-                // set user_role to active
-                if(data.features[0].attributes.ROLE.toLowerCase() !== req.body.role.toLowerCase()) {
-                  OracleDB.getConnection(dbConf)
-                  .then(async connection => {
-                    const roleId: any = await getRoleId(req.body.role.toLowerCase(), connection);
-                    await editAddInactiveUserRole(data.features[0].attributes.GLOBALID, roleId, connection);
-                    connection.commit();
-                    connection.release();
-                  });
-                } else {
-                  OracleDB.getConnection(dbConf)
-                  .then(async connection => {
-                    await addInactiveUserRole(data.features[0].attributes.GLOBALID, connection);
-                    connection.commit();
-                    connection.release();
-                  });
-                }
-              })
+    const body: string = JSON.stringify(req.body);
+    const outFields: string = 'OBJECTID,GLOBALID,ACTIVE,ROLE';
+    const getRequest: string = `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}/query?where=${inactiveUserQuery}&outFields=${outFields}&f=json&token=${token}`;
+    const inactiveUserResponse: AxiosResponse = await axios.get(getRequest, options);
+    if('data' in inactiveUserResponse && 'features' in inactiveUserResponse.data && inactiveUserResponse.data.features.length > 0) {
+      if(inactiveUserResponse.data.features[0].attributes.ACTIVE === 0) {
+        console.debug('Reactivating user');
+        // set Active to one, check if role is different
+        const editRequest = `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}/updateFeatures?f=json&token=${token}`;
+        const editBody = JSON.stringify({features: [{
+            attributes: {
+              OBJECTID: inactiveUserResponse.data.features[0].attributes.OBJECTID,
+              GLOBALID: inactiveUserResponse.data.features[0].attributes.GLOBALID,
+              ACTIVE: 1,
+              ...req.body
+            }
+          }]});
+        const editResponse = await axios.post(editRequest, editBody, options);
+        if ('data' in editResponse) {
+          if ('error' in editResponse.data) {
+            appLogger.error('User PUT error:', editResponse.data.error);
+            throw new Error(editResponse.data.error.message);
           }
-          else {
-            res.status(400).send('User already exists');
-          }
+          res.json(editResponse.data);
         }
         else {
-          fetch(`${WQIMS_REST_INFO.url}/0/addFeatures?f=json&token=${token}`, options)
-            .then(response => response.json())
-            .then(data => {
-              OracleDB.getConnection(dbConf)
-              .then(async connection => {
-                const roleId: any = await getRoleId(req.body.role.toLowerCase(), connection);
-                await addUserRole(data.features[0].attributes.GLOBALID, roleId, connection);
-                connection.commit();
-                connection.release();
-              })
-              res.json(data);
-            })
+          appLogger.error('User PUT error:', editResponse);
+          throw new Error('Error updating user');
         }
-      })
+      }
+      else {
+        res.status(500).send('User already exists');
+      }
+    }
+    else {
+      console.debug('Adding new user');
+      /* fetch(`${WQIMS_REST_INFO.url}/0/addFeatures?f=json&token=${token}`, options)
+        .then(response => response.json())
+        .then(data => {
+          OracleDB.getConnection(dbConf)
+          .then(async connection => {
+            const roleId: any = await getRoleId(req.body.role.toLowerCase(), connection);
+            await addUserRole(data.features[0].attributes.GLOBALID, roleId, connection);
+            connection.commit();
+            connection.release();
+          })
+          res.json(data);
+        }) */
+    }
   }
   catch (error) {
     res.status(500).send(error)
@@ -989,24 +1104,35 @@ function deleteMemberFromEB(userId: string) {
 
 function getToken(): Promise<any> {
   return new Promise((resolve, reject) => {
-    const options = {
-      method: 'POST',
+    const agsTokenUrl = WQIMS_REST_INFO.token_url;
+    const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
+      clientId: WQIMS_REST_INFO.appId,
+      clientSecret: WQIMS_REST_INFO.secret,
+      duration: 100000,
+      portal: 'https://www.wssc.maps.arcgis.com/sharing/rest'
+    })
+    session.getToken(agsTokenUrl)
+    .then(function(response) {
+      resolve({
+        access_token: response,
+        expires_in: 100000 * 60
+      })
+    })
+    /* const options = {
       headers: {
         accept: 'application/json',
         'content-type': 'application/x-www-form-urlencoded'
       },
-      body: `grant_type=client_credentials&client_id=${WQIMS_REST_INFO.appId}&client_secret=${WQIMS_REST_INFO.secret}`
     }
-  
-    fetch(WQIMS_REST_INFO.token_url, options)
-      .then(response => response.json())
-      .then(data => {
-        resolve(data.access_token);
+    const body = `grant_type=client_credentials&client_id=${WQIMS_REST_INFO.appId}&client_secret=${WQIMS_REST_INFO.secret}`
+    axios.post(WQIMS_REST_INFO.token_url, body, options)
+      .then(response => {
+        resolve(response.data.access_token);
       })
       .catch(err => {
         console.error(err);
         reject(err);
-      })
+      }) */
   })
 }
 
