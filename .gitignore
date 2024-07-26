@@ -13,3 +13,6 @@ wqimsAPI.pfx
 .svn/wc.db
 .svn/wc.db-journal
 .svn/pristine/
+.env_dev.txt
+.env_prd.txt
+.gitignore
