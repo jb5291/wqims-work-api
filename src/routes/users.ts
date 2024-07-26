@@ -574,10 +574,18 @@ function updateUser(id: string, user: any, connection: Connection) {
       bindParams['division'] = user.division === '' ? 'none' : user.division;
       bindDefs['division'] = {type: OracleDB.STRING, maxSize: 128};
     }
-    if(user.phoneNumber !== null && typeof user.phoneNumber !== 'undefined') {
-      query += 'PHONENUMBER = :phoneNumber, ';
-      bindParams['phoneNumber'] = user.phoneNumber;
-      bindDefs['phoneNumber'] = {type: OracleDB.STRING, maxSize: 12};
+    if('phonenumber' in user) {
+      if(user.phonenumber !== null && typeof user.phonenumber !== 'undefined') {
+        query += 'PHONENUMBER = :phonenumber, ';
+        bindParams['phonenumber'] = user.phonenumber;
+        bindDefs['phonenumber'] = {type: OracleDB.STRING, maxSize: 12};
+      }
+    } else {
+      if(user.phoneNumber !== null && typeof user.phoneNumber !== 'undefined') {
+        query += 'PHONENUMBER = :phoneNumber, ';
+        bindParams['phoneNumber'] = user.phoneNumber;
+        bindDefs['phoneNumber'] = {type: OracleDB.STRING, maxSize: 12};
+      }
     }
     if(user.email !== null && typeof user.email !== 'undefined') {
       query += 'EMAIL = :email, ';
@@ -589,25 +597,57 @@ function updateUser(id: string, user: any, connection: Connection) {
       bindParams['role'] = user.role;
       bindDefs['role'] = {type: OracleDB.STRING, maxSize: 64};
     }
-    if(user.rapidResponseTeam !== null && typeof user.rapidResponseTeam !== 'undefined') {
-      query += 'RAPIDRESPONSETEAM = :rapidResponseTeam, ';
-      bindParams['rapidResponseTeam'] = user.rapidResponseTeam;
-      bindDefs['rapidResponseTeam'] = {type: OracleDB.NUMBER, maxSize: 5};
+    if('rapidresponseteam' in user) {
+      if(user.rapidresponseteam !== null && typeof user.rapidresponseteam !== 'undefined') {
+        query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
+        bindParams['rapidresponseteam'] = user.rapidresponseteam;
+        bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
+      }
+    } else {
+      if(user.rapidResponseTeam !== null && typeof user.rapidResponseTeam !== 'undefined') {
+        query += 'RAPIDRESPONSETEAM = :rapidResponseTeam, ';
+        bindParams['rapidResponseTeam'] = user.rapidResponseTeam;
+        bindDefs['rapidResponseTeam'] = {type: OracleDB.NUMBER, maxSize: 5};
+      }
     }
-    if(user.altPhoneNumber !== null && typeof user.altPhoneNumber !== 'undefined') {
-      query += 'SECONDARYPHONENUMBER = :altPhoneNumber, ';
-      bindParams['altPhoneNumber'] = user.altPhoneNumber;
-      bindDefs['altPhoneNumber'] = {type: OracleDB.STRING, maxSize: 12};
+    if('altphonenumber' in user) {
+      if(user.altphonenumber !== null && typeof user.altphonenumber !== 'undefined') {
+        query += 'SECONDARYPHONENUMBER = :altphonenumber, ';
+        bindParams['altphonenumber'] = user.altphonenumber;
+        bindDefs['altphonenumber'] = {type: OracleDB.STRING, maxSize: 12};
+      }
+    } else {
+      if(user.altPhoneNumber !== null && typeof user.altPhoneNumber !== 'undefined') {
+        query += 'SECONDARYPHONENUMBER = :altPhoneNumber, ';
+        bindParams['altPhoneNumber'] = user.altPhoneNumber;
+        bindDefs['altPhoneNumber'] = {type: OracleDB.STRING, maxSize: 12};
+      }
     }
-    if(user.startTime !== null && typeof user.startTime !== 'undefined') {
-      query += 'STARTTIME = :startTime, ';
-      bindParams['startTime'] = user.startTime;
-      bindDefs['startTime'] = {type: OracleDB.STRING, maxSize: 24};
+    if('starttime' in user) {
+      if(user.starttime !== null && typeof user.starttime !== 'undefined') {
+        query += 'STARTTIME = :starttime, ';
+        bindParams['starttime'] = user.starttime;
+        bindDefs['starttime'] = {type: OracleDB.STRING, maxSize: 24};
+      }
+    } else {
+      if(user.startTime !== null && typeof user.startTime !== 'undefined') {
+        query += 'STARTTIME = :startTime, ';
+        bindParams['startTime'] = user.startTime;
+        bindDefs['startTime'] = {type: OracleDB.STRING, maxSize: 24};
+      }
     }
-    if(user.endTime !== null && typeof user.endTime !== 'undefined') {
-      query += 'ENDTIME = :endTime, ';
-      bindParams['endTime'] = user.endTime;
-      bindDefs['endTime'] = {type: OracleDB.STRING, maxSize: 24};
+    if('endtime' in user) {
+      if(user.endtime !== null && typeof user.endtime !== 'undefined') {
+        query += 'ENDTIME = :endtime, ';
+        bindParams['endtime'] = user.endtime;
+        bindDefs['endtime'] = {type: OracleDB.STRING, maxSize: 24};
+      }
+    } else {
+      if(user.endTime !== null && typeof user.endTime !== 'undefined') {
+        query += 'ENDTIME = :endTime, ';
+        bindParams['endTime'] = user.endTime;
+        bindDefs['endTime'] = {type: OracleDB.STRING, maxSize: 24};
+      }
     }
 
     query = query.slice(0, -2); // remove trailing comma
