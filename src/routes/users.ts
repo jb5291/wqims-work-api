@@ -156,8 +156,8 @@ usersRouter.get('/', async (req, res) => {
       clientId: WQIMS_REST_INFO.appId,
       clientSecret: WQIMS_REST_INFO.secret,
     })
-    //const token = await getToken();
-    /* const options = {
+    /* const token = await getToken();
+    const options = {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
@@ -169,31 +169,32 @@ usersRouter.get('/', async (req, res) => {
     }).then((response: any) => {
       console.debug(response);
     }) */
-    // const requestUrl = `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}/query?where=${query}&outFields=*&f=json&token=${token}`
-    // const response = await axios.get(requestUrl, options)
+    /* const query = 'ACTIVE=1';
+    const requestUrl = `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}/query?where=${query}&outFields=*&f=json&token=${token}`
+    const response = await axios.get(requestUrl, options) */
     queryFeatures({
       url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
       where: '1=1',
       authentication: session
     }).then((response: IQueryFeaturesResponse | IQueryResponse) => {
       console.debug(response);
-      //if(response.results.length) 
+      if('features' in response) {
+        res.json(response.features);
+      } else {
+        throw new Error('Error getting data');
+      }
     }).catch((error: any) => {
-      appLogger.error('User GET error:', error);
-      res.status(500).send({
-        error: error.message,
-        message: 'User GET error'
-      });
+      throw new Error(error.message);
     });
     /* if('data' in response) {
       if('error' in response.data) {
-        appLogger.error('User GET error:', response.data.error);
-       throw new Error(response.data.error.message);
+        //appLogger.error('User GET error:', response.data.error);
+        throw new Error(response.data.error.message);
       }
       res.json(response.data);
     }
     else {
-      appLogger.error('User GET error:', response);
+      //appLogger.error('User GET error:', response);
       throw new Error('Error getting data');
     } */
   }
@@ -202,7 +203,7 @@ usersRouter.get('/', async (req, res) => {
     res.status(500).send({
       error: error.message,
       message: 'User GET error'
-       });
+    });
   }
 });
 
@@ -266,13 +267,11 @@ usersRouter.put('/', async (req, res) => {
         const editResponse = await axios.post(editRequest, editBody, options);
         if ('data' in editResponse) {
           if ('error' in editResponse.data) {
-            appLogger.error('User PUT error:', editResponse.data.error);
             throw new Error(editResponse.data.error.message);
           }
           res.json(editResponse.data);
         }
         else {
-          appLogger.error('User PUT error:', editResponse);
           throw new Error('Error updating user');
         }
       }
@@ -282,6 +281,9 @@ usersRouter.put('/', async (req, res) => {
     }
     else {
       console.debug('Adding new user');
+      const addRequest = `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}/addFeatures?f=json&token=${token}`;
+      const addResponse = await axios.post(addRequest, body, options);
+      res.json(addResponse.data);
       /* fetch(`${WQIMS_REST_INFO.url}/0/addFeatures?f=json&token=${token}`, options)
         .then(response => response.json())
         .then(data => {
@@ -296,8 +298,12 @@ usersRouter.put('/', async (req, res) => {
         }) */
     }
   }
-  catch (error) {
-    res.status(500).send(error)
+  catch (error: any) {
+    appLogger.error('User PUT error:', error);
+    res.status(500).send({
+      error: error.message,
+      message: 'User GET error'
+    })
   }
 })
 
@@ -1104,8 +1110,8 @@ function deleteMemberFromEB(userId: string) {
 
 function getToken(): Promise<any> {
   return new Promise((resolve, reject) => {
-    const agsTokenUrl = WQIMS_REST_INFO.token_url;
-    const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
+    // const agsTokenUrl = WQIMS_REST_INFO.token_url;
+    /* const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
       clientId: WQIMS_REST_INFO.appId,
       clientSecret: WQIMS_REST_INFO.secret,
       duration: 100000,
@@ -1117,14 +1123,17 @@ function getToken(): Promise<any> {
         access_token: response,
         expires_in: 100000 * 60
       })
-    })
-    /* const options = {
+    }) */
+    const options = {
       headers: {
         accept: 'application/json',
         'content-type': 'application/x-www-form-urlencoded'
       },
     }
-    const body = `grant_type=client_credentials&client_id=${WQIMS_REST_INFO.appId}&client_secret=${WQIMS_REST_INFO.secret}`
+    const body: URLSearchParams = new URLSearchParams();
+    body.append('client_id', WQIMS_REST_INFO.appId);
+    body.append('client_secret', WQIMS_REST_INFO.secret);
+    body.append('grant_type', 'client_credentials');
     axios.post(WQIMS_REST_INFO.token_url, body, options)
       .then(response => {
         resolve(response.data.access_token);
@@ -1132,8 +1141,32 @@ function getToken(): Promise<any> {
       .catch(err => {
         console.error(err);
         reject(err);
-      }) */
+      })
   })
+}
+
+function checkAppPrivileges(token: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+    }
+    const body: URLSearchParams = new URLSearchParams();
+    body.append('client_id', WQIMS_REST_INFO.appId);
+    body.append('client_secret', WQIMS_REST_INFO.secret);
+    body.append('grant_type', 'client_credentials');
+    const url= `https://gisdev.wsscwater.com/portal/sharing/rest/oauth2/apps/${WQIMS_REST_INFO.appId}?f=json&token=${token}`;
+    axios.post(WQIMS_REST_INFO.token_url, body, options)
+      .then(response => {
+        resolve(response.data.access_token);
+      })
+      .catch(err => {
+        console.error(err);
+        reject(err);
+      })
+  });
 }
 
 // need to determine if name, phone, or email change
