@@ -44,15 +44,6 @@ export const FE_FULL_URL = process.env["FE_FULL_URL"] ? process.env["FE_FULL_URL
 
 export const ALLOWED_ORIGINS = [BASEURL, FE_FULL_URL, `${BASEURL}:${PROXY_LISTEN_PORT}`];
 
-export const EB_CREDS = {
-    username: get_env_val("EB_UN"),
-    password: get_env_val("EB_PW"),
-    organization_id: get_env_val("EB_ORG_ID"),
-    group_id: get_env_val("EB_WQIMS_GRP_ID"),
-    sms_id: get_env_val("EB_WQIMS_DP_SMS_ID"),
-    email_id: get_env_val("EB_WQIMS_DP_EMAIL_ID"),
-    record_id: get_env_val("EB_WQIMS_RECORD_ID"),
-}
 
 export const WQIMS_DB_CONFIG = {
     username: get_env_val("WQIMS_DB_UN"),
@@ -70,30 +61,57 @@ export const WQIMS_DB_CONFIG = {
     checklistItemTbl: get_env_val("WQIMS_DB_CHECKLIST_ITEMS"),
 }
 
-export const WQIMS_REST_INFO = {
-    //apiKey: get_env_val("WQIMS_REST_API_KEY"),
-    appId: get_env_val("WQIMS_REST_APP_ID"),
-    secret: get_env_val("WQIMS_REST_APP_SECRET"),
-    url: get_env_val("WQIMS_REST_ROOT"),
-    token_url: get_env_val("WQIMS_TOKEN_URL"),
-    alerts_lyr_id: get_env_val("WQIMS_ALERTS_LYR_ID"),
-    users_lyr_id: get_env_val("WQIMS_USERS_LYR_ID"),
-    thresholds_lyr_id: get_env_val("WQIMS_THRESHOLDS_LYR_ID"),
-    roles_lyr_id: get_env_val("WQIMS_ROLES_LYR_ID"),
-    groups_lyr_id: get_env_val("WQIMS_GROUPS_LYR_ID"),
-    users_groups_lyr_id: get_env_val("WQIMS_USERS_GROUPS_LYR_ID"),
-    users_roles_lyr_id: get_env_val("WQIMS_USERS_ROLES_LYR_ID"),
-    thresholds_groups_lyr_id: get_env_val("WQIMS_THRESHOLDS_GROUPS_LYR_ID"),
+// configs for all apis
+export const authConfig = {
+    msal: {
+        client: {
+            id: get_env_val("MS_CLIENT_ID"),
+            secret: get_env_val("MS_SECRET"),
+            tenant: get_env_val("MS_TENANT_ID")
+        },
+        auth: {
+            authority: 'https://login.microsoftonline.com',
+            authorizePath: `${get_env_val("MS_TENANT_ID")}/oauth2/v2.0/authorize`,
+            tokenPath: `${get_env_val("MS_TENANT_ID")}/oauth2/v2.0/token`,
+            graphEndpoint: 'https://graph.microsoft.com', // default,
+            redirectUri: `${BASEURL}:${PROXY_LISTEN_PORT}/auth/callback`
+        }
+    },
+    arcgis: {
+        client: {
+            id: get_env_val("WQIMS_REST_APP_ID"),
+            secret: get_env_val("WQIMS_REST_APP_SECRET")
+        },
+        auth: {
+            token_url: get_env_val("WQIMS_TOKEN_URL"),
+            feature_url: get_env_val("WQIMS_REST_ROOT")
+        },
+        layers: {
+            alerts: get_env_val("WQIMS_ALERTS_LYR_ID"),
+            users: get_env_val("WQIMS_USERS_LYR_ID"),
+            thresholds: get_env_val("WQIMS_THRESHOLDS_LYR_ID"),
+            roles: get_env_val("WQIMS_ROLES_LYR_ID"),
+            groups: get_env_val("WQIMS_GROUPS_LYR_ID"),
+            users_groups: get_env_val("WQIMS_USERS_GROUPS_LYR_ID"),
+            users_roles: get_env_val("WQIMS_USERS_ROLES_LYR_ID"),
+            thresholds_groups: get_env_val("WQIMS_THRESHOLDS_GROUPS_LYR_ID")
+        }
+    },
+    everbridge: {
+        client: {
+            username: get_env_val("EB_UN"),
+            password: get_env_val("EB_PW"),
+            organization_id: get_env_val("EB_ORG_ID"),
+            group_id: get_env_val("EB_WQIMS_GRP_ID"),
+        },
+        contacts: {
+            sms_id: get_env_val("EB_WQIMS_DP_SMS_ID"),
+            email_id: get_env_val("EB_WQIMS_DP_EMAIL_ID"),
+            record_id: get_env_val("EB_WQIMS_RECORD_ID"),
+        }
+    },
+    jwt_secret_key: get_env_val("JWT_SECRET_KEY")
 }
-
-export const PORTAL_TOKEN_URL = get_env_val("PORTAL_TOKEN_URL");
-
-
-export const JWT_SECRET_KEY = get_env_val("JWT_SECRET_KEY");
-
-export const MS_CLIENT_ID = get_env_val("MS_CLIENT_ID");
-export const MS_SECRET = get_env_val("MS_SECRET");
-export const MS_TENANT_ID = get_env_val("MS_TENANT_ID");
 
 export const TLS_CERT_INFO = {
     type: process.env["APP_CERT_TYPE"],

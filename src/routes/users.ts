@@ -5,12 +5,12 @@ import { ApiKeyManager, ApplicationCredentialsManager, ArcGISIdentityManager, Er
 import { addFeatures, updateFeatures, deleteFeatures, queryFeatures, IQueryFeaturesResponse, IQueryResponse, IEditFeatureResult } from '@esri/arcgis-rest-feature-service';
 import { v4 as uuidv4 } from 'uuid';
 
-import { BASEURL, EB_CREDS, WQIMS_DB_CONFIG, WQIMS_REST_INFO } from "../util/secrets";
+import { BASEURL, authConfig, WQIMS_DB_CONFIG } from "../util/secrets";
 import { appLogger, actionLogger } from '../util/appLogger';
 import { IWQIMSRole } from '../models/IRole';
 import graphHelper from '../util/graph';
 import { IWQIMSUser } from '../models/IUser';
-import { AGSsession } from '../api';
+// import { AGSsession } from '../api';
 
 const usersRouter = express.Router();
 const dbConf = {
@@ -18,10 +18,26 @@ const dbConf = {
   password: WQIMS_DB_CONFIG.password,
   connectString: WQIMS_DB_CONFIG.connection_string
 };
-interface arcgisError {
+type arcgisError = {
   code: number,
   description: string
 }
+type WqimsUser = {
+  OBJECTID: number | null,
+  GLOBALID: string | null,
+  NAME: string,
+  DEPARTMENT: string,
+  POSITION: string,
+  DIVISION: string,
+  PHONENUMBER: string,
+  EMAIL: string,
+  ROLE: string,
+  RAPIDRESPONSETEAM: number,
+  ALTPHONENUMBER: string,
+  STARTTIME: string,
+  ENDTIME: string,
+  ACTIVE: number | null,
+
 
 /**
  * @swagger
@@ -202,7 +218,7 @@ interface arcgisError {
    */
 usersRouter.get('/', async (req, res) => {
   try {
-    AGSsession.refreshToken()
+    /* AGSsession.refreshToken()
     .then((manager: string) => {
       queryFeatures({
         url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
@@ -217,7 +233,7 @@ usersRouter.get('/', async (req, res) => {
       }).catch((error: any) => {
         throw new Error(error.message);
       });
-    })
+    }) */
   }
   catch (error: any) {
     appLogger.error('User GET Error:', error.stack)
@@ -258,7 +274,7 @@ usersRouter.get('/', async (req, res) => {
    *              example: 'Internal Server Error'
    */   
 usersRouter.put('/', async (req, res) => {
-  try {
+  /* try {
     let getUserResult: IQueryFeaturesResponse | IQueryResponse;
     const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
       clientId: WQIMS_REST_INFO.appId,
@@ -363,7 +379,7 @@ usersRouter.put('/', async (req, res) => {
       error: error.message,
       message: 'User GET error'
     })
-  }
+  } */
 })
 
 /**
@@ -396,7 +412,7 @@ usersRouter.put('/', async (req, res) => {
  *              example: 'Internal Server Error'
  */
 usersRouter.post('/', async (req, res) => {
-  try {
+  /* try {
     const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
       clientId: WQIMS_REST_INFO.appId,
       clientSecret: WQIMS_REST_INFO.secret,
@@ -473,7 +489,7 @@ usersRouter.post('/', async (req, res) => {
       error: error.message,
       message: 'User DELETE error'
     });
-  }
+  } */
 })
 
 /**
@@ -506,7 +522,7 @@ usersRouter.post('/', async (req, res) => {
  *              example: 'Internal Server Error'
  */
 usersRouter.patch('/', async (req, res) => {
-  try {
+  /* try {
     const user = req.body;
     const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
       clientId: WQIMS_REST_INFO.appId,
@@ -556,7 +572,7 @@ usersRouter.patch('/', async (req, res) => {
       error: error.message,
       message: 'User PATCH error'
     });
-  }
+  } */
 })
 
 usersRouter.use('/search', async (req, res) => {
@@ -570,7 +586,7 @@ usersRouter.use('/search', async (req, res) => {
   }
 });
 
-function getRoleIds(session: ApplicationCredentialsManager): Promise<IWQIMSRole[]> {
+/* function getRoleIds(session: ApplicationCredentialsManager): Promise<IWQIMSRole[]> {
   return new Promise((resolve, reject) => {
     queryFeatures({
       url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.roles_lyr_id}/query`,
@@ -607,12 +623,12 @@ function getRoleIds(session: ApplicationCredentialsManager): Promise<IWQIMSRole[
       }
     })
   })
-}
+} */
 
 // Fetches the role from the rel class, checks if user input role matches
 // updates the role if it doesn't match
 // returns the IEditFeatureResponse
-function updateUserRole(session: ApplicationCredentialsManager, user: any, roles: IWQIMSRole[]): Promise<IEditFeatureResult> {
+/* function updateUserRole(session: ApplicationCredentialsManager, user: any, roles: IWQIMSRole[]): Promise<IEditFeatureResult> {
   return new Promise((resolve, reject) => {
     queryFeatures({
       url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_roles_lyr_id}`,
@@ -669,6 +685,6 @@ function updateUserRole(session: ApplicationCredentialsManager, user: any, roles
       }
     })
   })
-}
+} */
 
 export default usersRouter;

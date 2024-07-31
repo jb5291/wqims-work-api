@@ -2,10 +2,10 @@ import express from 'express';
 import OracleDB,  { Connection, outFormat } from 'oracledb';
 import jwt from 'jsonwebtoken';
 
-import { JWT_SECRET_KEY, WQIMS_DB_CONFIG } from '../util/secrets';
+import { authConfig, WQIMS_DB_CONFIG } from '../util/secrets';
 import { appLogger, actionLogger } from '../util/appLogger';
 import cookieParser from 'cookie-parser';
-import { checkToken } from './auth';
+// import { checkToken } from './auth';
 //import { getIdFromEmail } from './auth';
 
 const alertsRouter = express.Router();
@@ -85,7 +85,7 @@ OracleDB.createPool(dbConf)
     *               type: string
     *               example: Error getting alerts
    */
-  alertsRouter.get('/', async (req, res) => {
+  /* alertsRouter.get('/', async (req, res) => {
     let connection: Connection | null = null;
     let userEmail: string = '';
     let result: any = null;
@@ -113,7 +113,7 @@ OracleDB.createPool(dbConf)
         }
       }
     }
-  });
+  }); */
 
   /**
    * @swagger
@@ -230,7 +230,7 @@ OracleDB.createPool(dbConf)
   *              type: string
   *              example: 'Bad Gateway: DB Connection Error'
   */
-  alertsRouter.post('/status/:alertId', async (req, res) => {
+  /* alertsRouter.post('/status/:alertId', async (req, res) => {
     const alertId = req.params.alertId;
     const status = req.body?.STATUS === undefined ? 'ERROR' : req.body.STATUS;
     const comments = req.body?.COMMENTS === undefined ? '' : req.body.COMMENTS;
@@ -303,7 +303,7 @@ OracleDB.createPool(dbConf)
         }
       }
     }
-  });
+  }); */
 })
 
 /** 
@@ -342,7 +342,7 @@ OracleDB.createPool(dbConf)
   *              type: string
   *              example: 'Bad Gateway: DB Connection Error'
   */
-alertsRouter.post('/acknowledge', async (req, res) => {
+/* alertsRouter.post('/acknowledge', async (req, res) => {
   const alertInfo = req.body.alert;
   let userEmail: any;
   userEmail = checkToken(req, res);
@@ -355,7 +355,7 @@ alertsRouter.post('/acknowledge', async (req, res) => {
   } catch {
 
   }
-})
+}) */
 
 function getAlerts(email: string, connection: Connection) {
   return new Promise((resolve, reject) => {
