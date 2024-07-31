@@ -4,11 +4,14 @@ import swaggerJSDoc from 'swagger-jsdoc';
 import swaggerUI from 'swagger-ui-express';
 import qs from 'qs';
 import fs from 'fs';
+import * as fetch from "cross-fetch";
+import * as FormData from "isomorphic-form-data"
 import http from 'http';
 import https from 'https';
 import cookieParser from 'cookie-parser';
+import { ApplicationCredentialsManager, setDefaultRequestOptions } from "@esri/arcgis-rest-request";
 
-import { MS_CLIENT_ID, MS_SECRET, MS_TENANT_ID, TLS_CERT_INFO, PROXY_LISTEN_PORT, BASEURL, ALLOWED_ORIGINS } from "./util/secrets";
+import { MS_CLIENT_ID, MS_SECRET, MS_TENANT_ID, TLS_CERT_INFO, PROXY_LISTEN_PORT, BASEURL, ALLOWED_ORIGINS, WQIMS_REST_INFO } from "./util/secrets";
 import graphHelper from './util/graph';
 import groupsRouter from './routes/groups';
 import usersRouter from './routes/users';
@@ -18,6 +21,7 @@ import checklistsRouter from "./routes/checklists";
 import { authRouter } from "./routes/auth";
 
 const app = express();
+
 
 app.use(cors({
   origin: ALLOWED_ORIGINS,
@@ -39,6 +43,14 @@ app.use('/thresholds', thresholdsRouter);
 app.use('/alerts', alertsRouter);
 app.use('/checklists', checklistsRouter)
 app.use('/auth', authRouter);
+
+/**
+ * Application Credentials Manager for ArcGIS
+ */
+export const AGSsession: ApplicationCredentialsManager = new ApplicationCredentialsManager({
+  clientId: WQIMS_REST_INFO.appId,
+  clientSecret: WQIMS_REST_INFO.secret,
+});
 
 /** Swagger UI */
 
