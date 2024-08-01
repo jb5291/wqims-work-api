@@ -9,12 +9,12 @@ import https from 'https';
 import cookieParser from 'cookie-parser';
 
 import { authConfig, TLS_CERT_INFO, PROXY_LISTEN_PORT, BASEURL, ALLOWED_ORIGINS } from "./util/secrets";
-// import graphHelper from './util/graph';
-// import groupsRouter from './routes/groups';
-// import usersRouter from './routes/users';
-// import thresholdsRouter from "./routes/thresholds";
-// import alertsRouter from "./routes/alerts";
-// import checklistsRouter from "./routes/checklists";
+import graphHelper from './util/graph';
+import groupsRouter from './routes/groups';
+import usersRouter from './routes/users';
+import thresholdsRouter from "./routes/thresholds";
+import alertsRouter from "./routes/alerts";
+import checklistsRouter from "./routes/checklists";
 import { authRouter } from "./routes/auth";
 
 const app = express();
@@ -31,13 +31,11 @@ app.set('query parser', function(str: string) {
 app.use(cookieParser());
 app.set("port", PROXY_LISTEN_PORT || 3001);
 
-// graphHelper.initGraphClient({id: authConfig.graph.client.id, secret: authConfig.graph.client.secret, tenant: authConfig.graph.client.tenant});
-
-// app.use('/notificationGroups', groupsRouter);
-// app.use('/users', usersRouter);
-// app.use('/thresholds', thresholdsRouter);
-// app.use('/alerts', alertsRouter);
-// app.use('/checklists', checklistsRouter)
+app.use('/notificationGroups', groupsRouter);
+app.use('/users', usersRouter);
+app.use('/thresholds', thresholdsRouter);
+app.use('/alerts', alertsRouter);
+app.use('/checklists', checklistsRouter)
 app.use('/auth', authRouter);
 
 /** Swagger UI */

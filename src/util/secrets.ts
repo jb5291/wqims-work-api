@@ -64,28 +64,20 @@ export const WQIMS_DB_CONFIG = {
 // configs for all apis
 export const authConfig = {
     msal: {
-        client: {
-            id: get_env_val("MS_CLIENT_ID"),
-            secret: get_env_val("MS_SECRET"),
-            tenant: get_env_val("MS_TENANT_ID")
-        },
-        auth: {
-            authority: 'https://login.microsoftonline.com',
-            authorizePath: `${get_env_val("MS_TENANT_ID")}/oauth2/v2.0/authorize`,
-            tokenPath: `${get_env_val("MS_TENANT_ID")}/oauth2/v2.0/token`,
-            graphEndpoint: 'https://graph.microsoft.com', // default,
-            redirectUri: `${BASEURL}:${PROXY_LISTEN_PORT}/auth/callback`
-        }
+        id: get_env_val("MS_CLIENT_ID"),
+        secret: get_env_val("MS_SECRET"),
+        tenant: get_env_val("MS_TENANT_ID"),
+        authority: 'https://login.microsoftonline.com',
+        authorizePath: `${get_env_val("MS_TENANT_ID")}/oauth2/v2.0/authorize`,
+        tokenPath: `${get_env_val("MS_TENANT_ID")}/oauth2/v2.0/token`,
+        graphEndpoint: 'https://graph.microsoft.com', // default,
+        redirectUri: `${BASEURL}:${PROXY_LISTEN_PORT}/auth/callback`
     },
     arcgis: {
-        client: {
-            id: get_env_val("WQIMS_REST_APP_ID"),
-            secret: get_env_val("WQIMS_REST_APP_SECRET")
-        },
-        auth: {
-            token_url: get_env_val("WQIMS_TOKEN_URL"),
-            feature_url: get_env_val("WQIMS_REST_ROOT")
-        },
+        id: get_env_val("WQIMS_REST_APP_ID"),
+        secret: get_env_val("WQIMS_REST_APP_SECRET"),
+        token_url: get_env_val("WQIMS_TOKEN_URL"),
+        feature_url: get_env_val("WQIMS_REST_ROOT"),
         layers: {
             alerts: get_env_val("WQIMS_ALERTS_LYR_ID"),
             users: get_env_val("WQIMS_USERS_LYR_ID"),
@@ -98,19 +90,15 @@ export const authConfig = {
         }
     },
     everbridge: {
-        client: {
-            username: get_env_val("EB_UN"),
-            password: get_env_val("EB_PW"),
-            organization_id: get_env_val("EB_ORG_ID"),
-            group_id: get_env_val("EB_WQIMS_GRP_ID"),
-        },
-        contacts: {
-            sms_id: get_env_val("EB_WQIMS_DP_SMS_ID"),
-            email_id: get_env_val("EB_WQIMS_DP_EMAIL_ID"),
-            record_id: get_env_val("EB_WQIMS_RECORD_ID"),
-        }
+        username: get_env_val("EB_UN"),
+        password: get_env_val("EB_PW"),
+        organization_id: get_env_val("EB_ORG_ID"),
+        group_id: get_env_val("EB_WQIMS_GRP_ID"),
+        sms_id: get_env_val("EB_WQIMS_DP_SMS_ID"),
+        email_id: get_env_val("EB_WQIMS_DP_EMAIL_ID"),
+        record_id: get_env_val("EB_WQIMS_RECORD_ID"),
     },
-    jwt_secret_key: get_env_val("JWT_SECRET_KEY")
+    jwt_secret_key: get_env_val("JWT_SECRET_KEY"),
 }
 
 export const TLS_CERT_INFO = {

@@ -3,18 +3,30 @@ import * as jose from 'jose';
 import OracleDB, { Connection } from "oracledb";
 import jwt from 'jsonwebtoken';
 
-// import graph from "../util/graph";
-import { cca } from "../util/msal";
 import { authConfig, WQIMS_DB_CONFIG, BASEURL, PROXY_LISTEN_PORT, FE_FULL_URL} from "../util/secrets";
 import { appLogger, actionLogger } from "../util/appLogger";
-import { AuthenticationResult } from "@azure/msal-node";
+import TokenValidator from "../util/tokenValidator";
+import { Client } from "@microsoft/microsoft-graph-client";
+import { AuthenticationResult, ConfidentialClientApplication } from "@azure/msal-node";
+import { ClientSecretCredential } from "@azure/identity";
+import * as authProviders from "@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials";
+import axios from "axios";
+
 
 export const authRouter = express.Router();
+const tokenValidator = new TokenValidator();
+const cca = new ConfidentialClientApplication({
+  auth: {
+    clientId: authConfig.msal.id,
+    authority: `${authConfig.msal.authority}/${authConfig.msal.tenant}`,
+    clientSecret: authConfig.msal.secret,
+  },
+});
 
 authRouter.get('/login', (req, res) => {
   cca.getAuthCodeUrl({
-    scopes: [`${authConfig.msal.auth.graphEndpoint}/.default`],
-    redirectUri: authConfig.msal.auth.redirectUri
+    scopes: [`${authConfig.msal.graphEndpoint}/.default`],
+    redirectUri: authConfig.msal.redirectUri
   })
   .then((response) => {
     res.redirect(response);
@@ -25,83 +37,47 @@ authRouter.get('/login', (req, res) => {
 })
 
 authRouter.get('/callback', async (req, res) => {
-  console.log('wqims auth callback');
-  const code = req.query.code as string;
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
   cca.acquireTokenByCode({
-    code: code,
-    redirectUri: authConfig.msal.auth.redirectUri,
-    scopes: [`${authConfig.msal.auth.graphEndpoint}/.default`]
+    code: req.query.code as string,
+    redirectUri: authConfig.msal.redirectUri,
+    scopes: [`${authConfig.msal.graphEndpoint}/.default`]
   })
-  .then(response => {
-    if(validateMSAccessTokenClaims(response)) {
-      console.log('process token')
-      console.log(response);
+  .then(async (response: AuthenticationResult) => {
+    if(await tokenValidator.validateMSAccessToken(response.accessToken)) {
+      console.log('token verified')
+      try {
+        const graphClient = Client.init({
+          authProvider: (done) => {
+            done(null, response.accessToken);
+          }
+        })
+
+        const user = await graphClient.api('/me').get();
+        //const user = await graph.getUserDetails();
+        // const userId = await 
+
+        // const jwtToken = new jose.SignJWT({ })  //({ email: user.mail, exp: Math.floor(Date.now()/1000) + 365000000 }, authConfig.jwt_secret_key);
+        // res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
+        //actionLogger.info('User logged in', { email: user.mail, ip: ip })
+
+        res.redirect(`${FE_FULL_URL}/login?success=true`);
+      }
+      catch (error) {
+        console.debug(error);
+        //res.status(500).send(error);
+        res.redirect(`${FE_FULL_URL}/login?success=false`);
+      }
     } else {
-      console.log('cannot verify token from MS')
+      console.log('cannot verify token from MS');
+      //res.status(403).send('Forbidden');
+      res.redirect(`${FE_FULL_URL}/login?success=false`);
     }
   })
-  /* const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  const code = req.query.code;
-  const options: any = {
-    code,
-    redirect_uri: `${BASEURL}:${PROXY_LISTEN_PORT}/auth/callback`,
-    scope: 'https://graph.microsoft.com/.default'
-  }
-
-  try {
-    const accessToken = await client.getToken(options);
-    const user = await graph.getUserDetails(accessToken.token);
-
-    const jwtToken = jwt.sign({ email: user.mail, exp: Math.floor(Date.now()/1000) + 365000000 }, authConfig.jwt_secret_key);
-
-    res.cookie('token', jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
-    actionLogger.info('User logged in', { email: user.mail, ip: ip })
-
-    
-    res.redirect(`${FE_FULL_URL}/login?success=true`);
-  } catch (error) {
-    console.debug(error);
-    res.status(500).send(error);
-    res.redirect(`${FE_FULL_URL}/login?success=false`);
-  } */
 })
 
-function validateMSAccessTokenClaims(token: AuthenticationResult): boolean {
-
-
-  const now = Math.round(new Date().getTime() / 1000.0);
-  let audience_flg: boolean = false;
-  let tenant_flg: boolean = false;
-  let issuer_flg: boolean = false;
-  let expiry_flg: boolean = false;
-  if ("account" in token && token.account) {  
-    if("idTokenClaims" in token.account && token.account.idTokenClaims) {
-      // validate the audience
-      // should match the client id of the app registered in Azure
-      if("aud" in token.account.idTokenClaims) {
-        audience_flg = token.account.idTokenClaims.aud === authConfig.msal.client.id;
-      }
-      // validate the tenant
-      // should match the tenant id assigned to wssc
-      if("tid" in token.account.idTokenClaims) {
-        tenant_flg = token.account.idTokenClaims.tid === authConfig.msal.client.tenant
-      }
-      // validate the issuer
-      // similar to checking tenant 
-      if("iss" in token.account.idTokenClaims) {
-        issuer_flg = token.account.idTokenClaims.iss === `${authConfig.msal.auth.authority}/${authConfig.msal.client.tenant}/v2.0`
-      }
-      // validate the token expiry
-      if('iat' in token.account.idTokenClaims && 'exp' in token.account.idTokenClaims) {
-        expiry_flg = (token.account.idTokenClaims.iat && token.account.idTokenClaims.iat <= now) && (token.account.idTokenClaims.exp && token.account.idTokenClaims.exp > now) ? true : false;
-      }
-    }
-  }
-  return audience_flg && tenant_flg && issuer_flg && expiry_flg;
-}
-
-
-/* OracleDB.createPool({
+OracleDB.createPool({
   user: WQIMS_DB_CONFIG.username,
   password: WQIMS_DB_CONFIG.password,
   connectString: WQIMS_DB_CONFIG.connection_string
@@ -219,4 +195,4 @@ export function checkToken(req: any, res: any): string | any {
     }
   })
   return status;
-} */
+}

@@ -37,7 +37,7 @@ type WqimsUser = {
   STARTTIME: string,
   ENDTIME: string,
   ACTIVE: number | null,
-
+}
 
 /**
  * @swagger
