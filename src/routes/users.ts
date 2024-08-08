@@ -10,6 +10,7 @@ import { appLogger, actionLogger } from '../util/appLogger';
 import { IWQIMSRole } from '../models/IRole';
 import graphHelper from '../util/graph';
 import { IWQIMSUser } from '../models/IUser';
+import { logRequest, verifyAndRefreshToken } from './auth';
 // import { AGSsession } from '../api';
 
 const usersRouter = express.Router();
@@ -216,9 +217,9 @@ type WqimsUser = {
    *              type: string
    *              example: 'Internal Server Error'
    */
-usersRouter.get('/', async (req, res) => {
+usersRouter.get('/', logRequest, verifyAndRefreshToken, async (req, res) => {
   try {
-    /* AGSsession.refreshToken()
+     AGSsession.refreshToken()
     .then((manager: string) => {
       queryFeatures({
         url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
@@ -233,7 +234,7 @@ usersRouter.get('/', async (req, res) => {
       }).catch((error: any) => {
         throw new Error(error.message);
       });
-    }) */
+    }) 
   }
   catch (error: any) {
     appLogger.error('User GET Error:', error.stack)
