@@ -1,44 +1,71 @@
-import express from 'express';
-import OracleDB, { Connection } from 'oracledb';
-import axios, { AxiosResponse } from 'axios';
-import { ApiKeyManager, ApplicationCredentialsManager, ArcGISIdentityManager, ErrorTypes, IFeature, request } from '@esri/arcgis-rest-request';
-import { addFeatures, updateFeatures, deleteFeatures, queryFeatures, IQueryFeaturesResponse, IQueryResponse, IEditFeatureResult } from '@esri/arcgis-rest-feature-service';
-import { v4 as uuidv4 } from 'uuid';
+import express from "express";
+import { ApplicationCredentialsManager } from "@esri/arcgis-rest-request";
+import {
+  addFeatures,
+  updateFeatures,
+  queryFeatures,
+  IQueryFeaturesResponse,
+  IQueryResponse,
+  IQueryRelatedResponse,
+  IRelatedRecordGroup,
+  IEditFeatureResult,
+  IFeature,
+  queryRelated,
+} from "@esri/arcgis-rest-feature-service";
+import { v4 as uuidv4 } from "uuid";
 
-import { BASEURL, authConfig, WQIMS_DB_CONFIG } from "../util/secrets";
-import { appLogger, actionLogger } from '../util/appLogger';
-import { IWQIMSRole } from '../models/IRole';
-import graphHelper from '../util/graph';
-import { IWQIMSUser } from '../models/IUser';
-import { logRequest, verifyAndRefreshToken } from './auth';
+import { authConfig } from "../util/secrets";
+import { appLogger } from "../util/appLogger";
+import graphHelper from "../util/graph";
+import { gisCredentialManager } from "./auth";
 // import { AGSsession } from '../api';
 
 const usersRouter = express.Router();
-const dbConf = {
-  user: WQIMS_DB_CONFIG.username,
-  password: WQIMS_DB_CONFIG.password,
-  connectString: WQIMS_DB_CONFIG.connection_string
-};
+
 type arcgisError = {
-  code: number,
-  description: string
-}
+  code: number;
+  description: string;
+};
 type WqimsUser = {
-  OBJECTID: number | null,
-  GLOBALID: string | null,
-  NAME: string,
-  DEPARTMENT: string,
-  POSITION: string,
-  DIVISION: string,
-  PHONENUMBER: string,
-  EMAIL: string,
-  ROLE: string,
-  RAPIDRESPONSETEAM: number,
-  ALTPHONENUMBER: string,
-  STARTTIME: string,
-  ENDTIME: string,
-  ACTIVE: number | null,
-}
+  OBJECTID: number | null;
+  GLOBALID: string | null;
+  NAME: string;
+  DEPARTMENT: string;
+  POSITION: string;
+  DIVISION: string;
+  PHONENUMBER: string;
+  EMAIL: string;
+  ROLE: string;
+  RAPIDRESPONSETEAM: number;
+  ALTPHONENUMBER: string;
+  STARTTIME: string;
+  ENDTIME: string;
+  ACTIVE: number | null;
+};
+type WqimsRole = {
+  OBJECTID: number;
+  ROLE: string;
+  ADD_USER: number;
+  EDIT_USER: number;
+  DELETE_USER: number;
+  ASSIGN_USER_ROLE: number;
+  ADD_THRESHOLD: number;
+  EDIT_THRESHOLD: number;
+  DELETE_THRESHOLD: number;
+  ADD_GROUP: number;
+  ADD_GROUP_USER: number;
+  ADD_GROUP_THRESHOLD: number;
+  EDIT_GROUP: number;
+  REMOVE_GROUP_USER: number;
+  REMOVE_GROUP: number;
+  REVIEW_ALERTS: number;
+  ACKNOWLEDGE_ALERTS: number;
+  GLOBALID: string;
+};
+
+const featureUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`;
+const rolesRelationshipClassUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users_roles}`;
+const rolesUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.roles}`;
 
 /**
  * @swagger
@@ -126,7 +153,7 @@ type WqimsUser = {
  *                type: boolean
  *              error:
  *                type: object
- *                properties: 
+ *                properties:
  *                  code:
  *                    type: number
  *                  description:
@@ -134,15 +161,15 @@ type WqimsUser = {
  *    ArcGISGetUsersResponse:
  *      type: object
  *      properties:
- *        objectIdFieldName: 
+ *        objectIdFieldName:
  *          type: string
- *        globalIdFieldName: 
+ *        globalIdFieldName:
  *          type: string
  *        hasZ:
  *          type: boolean
  *        hasM:
  *          type: boolean
- *        fields: 
+ *        fields:
  *          type: array
  *          items:
  *            type: object
@@ -194,194 +221,184 @@ type WqimsUser = {
  *                    nullable: true
  */
 
-  /**
-   * @swagger
-   * /users:
-   *  get:
-   *    summary: Get list of active users
-   *    description: Gets a list of groups from DSNGIST wqims.users
-   *    tags: 
-   *      - Users
-   *    responses:
-   *      '200':
-   *        description: A list of users
-   *        content:
-   *          application/json:
-   *            schema:
-   *              $ref: '#/components/schemas/ArcGISGetUsersResponse'
-   *      '500':
-     *        description: Internal Server Error
-   *        content:
-   *          application/json:
-   *            schema:
-   *              type: string
-   *              example: 'Internal Server Error'
-   */
-usersRouter.get('/', logRequest, verifyAndRefreshToken, async (req, res) => {
+/**
+ * @swagger
+ * /users:
+ *  get:
+ *    summary: Get list of active users
+ *    description: Gets a list of groups from DSNGIST wqims.users
+ *    tags:
+ *      - Users
+ *    responses:
+ *      '200':
+ *        description: A list of users
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/ArcGISGetUsersResponse'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+usersRouter.get("/" /*, logRequest, verifyAndRefreshToken*/, async (req, res) => {
   try {
-     AGSsession.refreshToken()
-    .then((manager: string) => {
+    gisCredentialManager.refreshToken().then((manager: string) => {
       queryFeatures({
-        url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
-        where: 'ACTIVE=1',
-        authentication: manager
+        url: `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`,
+        where: "ACTIVE=1",
+        authentication: manager,
       }).then((response: IQueryFeaturesResponse | IQueryResponse) => {
-        if('features' in response) {
+        if ("features" in response) {
           res.json(response.features);
         } else {
-          throw new Error('Error getting data');
+          throw new Error("Error getting data");
         }
-      }).catch((error: any) => {
-        throw new Error(error.message);
       });
-    }) 
-  }
-  catch (error: any) {
-    appLogger.error('User GET Error:', error.stack)
+    });
+  } catch (error) {
+    const stack = error instanceof Error ? error.stack : "unknown error";
+    appLogger.error("User GET Error:", stack);
     res.status(500).send({
-      error: error.message,
-      message: 'User GET error'
+      error: error instanceof Error ? error.message : "unknown error",
+      message: "User GET error",
     });
   }
 });
 
-  /**
-   * @swagger
-   * /users:
-   *  put:
-   *    summary: Add a new user to wqims.users
-   *    description: Adds a new user to wqims.users table
-   *    tags:
-   *      - Users
-   *    requestBody:
-   *      required: true
-   *      content:
-   *        application/json:
-   *          schema:
-   *            $ref: '#/components/schemas/AddUserData'
-   *    responses:
-   *      '200':
-   *        description: User added successfully
-   *        content:
-   *          application/json:
-   *            schema:
-   *              $ref: '#/components/schemas/ArcGISEditFeatureResponse'
-   *      '500':
-   *        description: Internal Server Error
-   *        content:
-   *          application/json:
-   *            schema:
-   *              type: string
-   *              example: 'Internal Server Error'
-   */   
-usersRouter.put('/', async (req, res) => {
-  /* try {
+/**
+ * @swagger
+ * /users:
+ *  put:
+ *    summary: Add a new user to wqims.users
+ *    description: Adds a new user to wqims.users table
+ *    tags:
+ *      - Users
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            $ref: '#/components/schemas/AddUserData'
+ *    responses:
+ *      '200':
+ *        description: User added successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/ArcGISEditFeatureResponse'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+usersRouter.put("/", async (req, res) => {
+  try {
     let getUserResult: IQueryFeaturesResponse | IQueryResponse;
-    const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
-      clientId: WQIMS_REST_INFO.appId,
-      clientSecret: WQIMS_REST_INFO.secret,
-    });
-    const user: IWQIMSUser = req.body;
-    const roleIds: IWQIMSRole[] = await getRoleIds(session);
+    const user: WqimsUser = req.body;
 
-    if(!user) {
-      throw new Error('User data not provided');
-    } 
+    if (!user) {
+      throw new Error("User data not provided");
+    }
 
     // query user table to see if user already exists and is inactive
     // DOES NOT CHECK IF THE USER EXISTS ALREADY, ONLY IF THEY ARE INACTIVE
     // NEED TO CHECK FOR DUPLICATE USERS ON THE FRONT END
-    await queryFeatures({
-      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
-      where: `ACTIVE=0 AND EMAIL='${user.EMAIL}'`,
-      authentication: session
-    })
-    .then(async (response: IQueryFeaturesResponse | IQueryResponse) => {
-      getUserResult = response;
-      // if user exists and is inactive, update the user
-      if('features' in getUserResult && getUserResult.features.length > 0) {
-        //
-        // REACTIVATE USER
-        //
-        await updateFeatures({
-          url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
-          features: [{
-            attributes: {
-              OBJECTID: getUserResult.features[0].attributes.OBJECTID,
-              GLOBALID: getUserResult.features[0].attributes.GLOBALID,
-              ACTIVE: 1,
-              ...req.body
-            }
-          }],
-          authentication: session
-        })
-        .then(async (response: { updateResults: IEditFeatureResult[] }) => { 
-          const updateResult: IEditFeatureResult = response.updateResults[0];
-          // if the user was inactive, find their previous role, and compare it to the new role
-          if('features' in getUserResult) {
+    gisCredentialManager.refreshToken().then(async (token: string) => {
+      await queryFeatures({
+        url: featureUrl,
+        where: `ACTIVE=0 AND EMAIL='${user.EMAIL}'`,
+        authentication: token,
+      })
+        .then(async (response: IQueryFeaturesResponse | IQueryResponse) => {
+          getUserResult = response;
+          // if user exists and is inactive, update the user
+          if ("features" in getUserResult && getUserResult.features.length > 0) {
             //
-            //  FETCH USER ROLE
+            // REACTIVATE USER
             //
-            await updateUserRole(session, getUserResult.features[0].attributes, roleIds)
-            .then((response: IEditFeatureResult) => {
-              if('error' in response) {
-                throw new Error(response.error?.description);
-              }
-            })
-            .catch((error: any) => {
-              throw new Error(error.message);
-            })
+            user.OBJECTID = getUserResult.features[0].attributes.OBJECTID;
+            user.GLOBALID = getUserResult.features[0].attributes.GLOBALID;
+            user.ACTIVE = 1;
+            await updateFeatures({
+              url: featureUrl,
+              features: [
+                {
+                  attributes: user,
+                },
+              ],
+              authentication: token,
+            }).then(async (response: { updateResults: IEditFeatureResult[] }) => {
+              const updateResult: IEditFeatureResult = response.updateResults[0];
+              // if the user was inactive, find their previous role, and compare it to the new role
+              await updateUserRole(token, user)
+                .then((response: IEditFeatureResult) => {
+                  if ("error" in response) {
+                    throw new Error(response.error?.description);
+                  }
+                })
+                .catch((error) => {
+                  throw new Error(error.message);
+                });
+              res.json(updateResult);
+            });
           } else {
-            throw new Error('Error getting user data');
+            // create a new user
+            const new_guid = `{${uuidv4().toUpperCase()}}`;
+            user.GLOBALID = new_guid;
+            user.ACTIVE = 1;
+            addFeatures({
+              url: featureUrl,
+              features: [
+                {
+                  attributes: {
+                    GLOBALID: user.GLOBALID,
+                    NAME: user.NAME,
+                    DEPARTMENT: user.DEPARTMENT,
+                    POSITION: user.POSITION,
+                    DIVISION: user.DIVISION,
+                    PHONENUMBER: user.PHONENUMBER,
+                    EMAIL: user.EMAIL,
+                    ROLE: user.ROLE,
+                    RAPIDRESPONSETEAM: user.RAPIDRESPONSETEAM,
+                    ALTPHONENUMBER: user.ALTPHONENUMBER,
+                    STARTTIME: user.STARTTIME,
+                    ENDTIME: user.ENDTIME,
+                    ACTIVE: user.ACTIVE,
+                  },
+                },
+              ],
+              authentication: token,
+            }).then(async (response: { addResults: IEditFeatureResult[] }) => {
+              // add role to relationship class
+              await updateUserRole(token, user).then((response: IEditFeatureResult) => {
+                if ("error" in response) {
+                  throw new Error(response.error?.description);
+                }
+              });
+              res.json(response.addResults[0]);
+            });
           }
-          res.json(updateResult);
         })
-        .catch((error: any) => {
+        .catch((error) => {
           throw new Error(error.message);
         });
-      } else { // create a new user
-        const new_guid = `{${uuidv4().toUpperCase()}}`;
-        user.GLOBALID = new_guid;
-        user.ACTIVE = 1;
-        addFeatures({
-          url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
-          features: [{
-            attributes: {
-              ...user,
-            }
-          }],
-          authentication: session
-        })
-        .then(async (response: { addResults: IEditFeatureResult[] }) => {
-          await updateUserRole(session, user, roleIds)
-          .then((response: IEditFeatureResult) => {
-            if('error' in response) {
-              throw new Error(response.error?.description);
-            }
-          })
-          .catch((error: any) => {
-            throw new Error(error.message);
-          })
-          res.json(response.addResults[0]);
-        })
-        .catch((error: any) => {
-          throw new Error(error.message);
-        })
-      }
-    })
-    .catch((error: any) => {
-      throw new Error(error.message);
     });
-
-  }
-  catch (error: any) {
-    appLogger.error('User PUT error:', error);
+  } catch (error) {
+    const stack = error instanceof Error ? error.stack : "unknown error";
+    appLogger.error("User GET Error:", stack);
     res.status(500).send({
-      error: error.message,
-      message: 'User GET error'
-    })
-  } */
-})
+      error: error instanceof Error ? error.message : "unknown error",
+      message: "User GET error",
+    });
+  }
+});
 
 /**
  * @swagger
@@ -412,7 +429,7 @@ usersRouter.put('/', async (req, res) => {
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.post('/', async (req, res) => {
+usersRouter.post("/", async (req, res) => {
   /* try {
     const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
       clientId: WQIMS_REST_INFO.appId,
@@ -491,7 +508,7 @@ usersRouter.post('/', async (req, res) => {
       message: 'User DELETE error'
     });
   } */
-})
+});
 
 /**
  * @swagger
@@ -522,7 +539,7 @@ usersRouter.post('/', async (req, res) => {
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.patch('/', async (req, res) => {
+usersRouter.patch("/", async (req, res) => {
   /* try {
     const user = req.body;
     const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
@@ -574,11 +591,11 @@ usersRouter.patch('/', async (req, res) => {
       message: 'User PATCH error'
     });
   } */
-})
+});
 
-usersRouter.use('/search', async (req, res) => {
+usersRouter.use("/search", async (req, res) => {
   try {
-    const searchQuery= req.query.filter as string;
+    const searchQuery = req.query.filter as string;
     const users = await graphHelper.getADUsers(searchQuery);
     res.send(users);
   } catch (error) {
@@ -587,105 +604,98 @@ usersRouter.use('/search', async (req, res) => {
   }
 });
 
-/* function getRoleIds(session: ApplicationCredentialsManager): Promise<IWQIMSRole[]> {
+function getRoleIds(session: ApplicationCredentialsManager | string): Promise<WqimsRole[]> {
   return new Promise((resolve, reject) => {
     queryFeatures({
-      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.roles_lyr_id}/query`,
-      where: '1=1',
-      outFields: '*',
-      authentication: session
+      url: rolesUrl,
+      where: "1=1",
+      outFields: "*",
+      authentication: session,
     }).then((response: IQueryFeaturesResponse | IQueryResponse) => {
-      if('features' in response) {
-        resolve(response.features.map((feature: IFeature) => {
-          return {
-            ROLE_ID: feature.attributes.GLOBALID,
-            ROLE: feature.attributes.ROLE,
-            PERMISSIONS: {
-              ADD_USER: feature.attributes.ADD_USER,
-              EDIT_USER: feature.attributes.EDIT_USER,
-              DELETE_USER: feature.attributes.DELETE_USER,
-              ASSIGN_USER_ROLE: feature.attributes.ASSIGN_USER_ROLE,
-              ADD_THRESHOLD: feature.attributes.ADD_THRESHOLD,
-              EDIT_THRESHOLD: feature.attributes.EDIT_THRESHOLD,
-              DELETE_THRESHOLD: feature.attributes.DELETE_THRESHOLD,
-              ADD_GROUP: feature.attributes.ADD_GROUP,
-              ADD_GROUP_USER: feature.attributes.ADD_GROUP_USER,
-              ADD_GROUP_THRESHOLD: feature.attributes.ADD_GROUP_THRESHOLD,
-              EDIT_GROUP: feature.attributes.EDIT_GROUP,
-              REMOVE_GROUP_USER: feature.attributes.REMOVE_GROUP_USER,
-              REMOVE_GROUP: feature.attributes.REMOVE_GROUP,
-              REVIEW_ALERTS: feature.attributes.REVIEW_ALERTS,
-              ACKNOWLEDGE_ALERTS: feature.attributes.ACKNOWLEDGE_ALERTS,
-            }
-          }
-        }))
+      if ("features" in response) {
+        resolve(
+          response.features.map((feature: IFeature) => {
+            return feature.attributes as WqimsRole;
+          })
+        );
       } else {
         reject([]);
       }
-    })
-  })
-} */
+    });
+  });
+}
 
 // Fetches the role from the rel class, checks if user input role matches
 // updates the role if it doesn't match
 // returns the IEditFeatureResponse
-/* function updateUserRole(session: ApplicationCredentialsManager, user: any, roles: IWQIMSRole[]): Promise<IEditFeatureResult> {
+function updateUserRole(session: ApplicationCredentialsManager | string, user: WqimsUser): Promise<IEditFeatureResult> {
   return new Promise((resolve, reject) => {
-    queryFeatures({
-      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_roles_lyr_id}`,
-      where: `USER_ID = '${user.globalid}'`,
-      authentication: session
-    })
-    .then((response: IQueryFeaturesResponse | IQueryResponse) => {
-      // if there is a response with features, then role is being updated
-      if('features' in response && response.features.length > 0) {
-        const prev_role = response.features[0].attributes;
-        if(prev_role.map((role: IWQIMSRole)=>role.ROLE_ID) !== user.role.toLowerCase()) {
-          const newRoleId: string | undefined = roles.find(role => role.ROLE === user.ROLE.toLowerCase())?.ROLE_ID;
-          if(newRoleId) {
-            updateFeatures({
-              url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_roles_lyr_id}`,
-              features: [{
-                attributes: {
-                  RID: prev_role.RID,
-                  USER_ID: response.features[0].attributes.GLOBALID,
-                  ROLE_ID: newRoleId
-                }
-              }],
-              authentication: session
-            })
-            .then((response: { updateResults: IEditFeatureResult[] }) => {
-              const roleUpdateResponse: IEditFeatureResult = response.updateResults[0];
-              if('success' in roleUpdateResponse && roleUpdateResponse.success) {
-                resolve(roleUpdateResponse);
-              } else {
-                reject(roleUpdateResponse);
-              }
-            })
-          }
-        }
-      } else { // response with no features, no role assigned, so add role
-        addFeatures({
-          url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_roles_lyr_id}`,
-          features: [{
-            attributes: {
-              USER_ID: user.GLOBALID,
-              ROLE_ID: roles.find(role => role.ROLE === user.ROLE.toLowerCase())?.ROLE_ID
+    const objectId = user.OBJECTID ? user.OBJECTID : 0;
+    const allowedRoles: string[] = ["Admin", "Editor", "Viewer"];
+    if (allowedRoles.includes(user.ROLE)) {
+      queryRelated({
+        url: featureUrl,
+        objectIds: [objectId],
+        outFields: ["ROLE"],
+        relationshipId: 0, // this is the relationship id for the users_roles rel class
+        authentication: session,
+      }).then(async (response: IQueryRelatedResponse) => {
+        // updating role
+        const roles = await getRoleIds(session);
+        if ("relatedRecordGroups" in response && response.relatedRecordGroups.length > 0) {
+          const relatedRecordGroup: IRelatedRecordGroup = response.relatedRecordGroups[0];
+          if (
+            "relatedRecords" in relatedRecordGroup &&
+            relatedRecordGroup.relatedRecords &&
+            relatedRecordGroup.relatedRecords.length > 0
+          ) {
+            const relatedRecord = relatedRecordGroup.relatedRecords[0];
+            if (relatedRecord.attributes.ROLE === user.ROLE.toLowerCase()) {
+              resolve({ objectId: objectId, success: true });
+            } else {
+              await updateFeatures({
+                url: rolesRelationshipClassUrl,
+                features: [
+                  {
+                    attributes: {
+                      RID: relatedRecord.attributes.RID,
+                      USER_ID: user.GLOBALID,
+                      ROLE_ID: roles.find((role) => role.ROLE === user.ROLE.toLowerCase())?.GLOBALID,
+                    },
+                  },
+                ],
+              });
             }
-          }],
-          authentication: session
-        })
-        .then((response: { addResults: IEditFeatureResult[] }) => {
-          const roleAddResponse: IEditFeatureResult = response.addResults[0];
-          if('success' in roleAddResponse && roleAddResponse.success) {
-            resolve(roleAddResponse);
           } else {
-            reject(roleAddResponse);
+            throw new Error("No related records found in related record group.");
           }
-        })
-      }
-    })
-  })
-} */
+        } else {
+          // add role
+          addFeatures({
+            url: rolesRelationshipClassUrl,
+            features: [
+              {
+                attributes: {
+                  USER_ID: user.GLOBALID,
+                  ROLE_ID: roles.find((role) => role.ROLE === user.ROLE.toLowerCase())?.GLOBALID,
+                },
+              },
+            ],
+            authentication: session,
+          }).then((response: { addResults: IEditFeatureResult[] }) => {
+            const roleAddResponse: IEditFeatureResult = response.addResults[0];
+            if ("success" in roleAddResponse && roleAddResponse.success) {
+              resolve(roleAddResponse);
+            } else {
+              reject(roleAddResponse);
+            }
+          });
+        }
+      });
+    } else {
+      reject("Invalid role");
+    }
+  });
+}
 
 export default usersRouter;

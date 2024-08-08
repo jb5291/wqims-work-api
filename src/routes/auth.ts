@@ -26,7 +26,7 @@ const cca = new ConfidentialClientApplication({
     clientSecret: authConfig.msal.secret,
   },
 });
-const gisCredentialManager: ApplicationCredentialsManager = new ApplicationCredentialsManager({
+export const gisCredentialManager: ApplicationCredentialsManager = new ApplicationCredentialsManager({
   clientId: authConfig.arcgis.id,
   clientSecret: authConfig.arcgis.secret,
 });
@@ -261,15 +261,15 @@ export async function checkPermissions(action: string) {
 }
 async function checkActionPermissions(userId: number, action: string): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    gisCredentialManager.refreshToken().then((manager: IAuthenticationManager | string) => {
+    gisCredentialManager.refreshToken().then((token: IAuthenticationManager | string) => {
       queryRelated({
         url: `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users_roles}`,
         objectIds: [userId],
-        outFields: ["ROLE_ID"],
+        outFields: ["*"],
         relationshipId: 0,
-        authentication: manager,
+        authentication: token,
       }).then(async (response: IQueryRelatedResponse) => {
-        if ("relatedRecordGroups" in response) {
+        if ("relatedRecordGroups" in response && response.relatedRecordGroups.length > 0) {
           const relatedRecordGroup: IRelatedRecordGroup = response.relatedRecordGroups[0];
           if (
             "relatedRecords" in relatedRecordGroup &&
