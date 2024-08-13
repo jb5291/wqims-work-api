@@ -1,233 +1,308 @@
 import express from 'express';
-import OracleDB, { Connection } from 'oracledb';
 
-import { WQIMS_DB_CONFIG } from "../util/secrets";
-import { appLogger, actionLogger } from '../util/appLogger';
+import { appLogger} from '../util/appLogger';
+import {WqimsGroup} from "../models/WqimsGroup";
 
 const groupsRouter = express.Router();
-const dbConf = {
-  user: WQIMS_DB_CONFIG.username,
-  password: WQIMS_DB_CONFIG.password,
-  connectString: WQIMS_DB_CONFIG.connection_string
-};
+
 /**
  * @swagger
  * components:
  *  schemas:
+ *    AddGroupDataResult:
+ *      type: object
+ *      properties:
+ *        OBJECTID:
+ *          type: number
+ *        GROUPNAME:
+ *          type: string
+ *        GROUPID:
+ *          type: string
+ *        ACTIVE:
+ *           type: integer
+ *           nullable: true
+ *        MEMBERS:
+ *          type: array
+ *          items:
+ *            type: string
+ *        THRESHOLDS:
+ *          type: array
+ *          items:
+ *            type: string
+ *    AddGroupData:
+ *      type: object
+ *      properties:
+ *        GROUPNAME:
+ *          type: string
+ *        MEMBERS:
+ *          type: array
+ *          items:
+ *            type: string
+ *        THRESHOLDS:
+ *          type: array
+ *          items:
+ *            type: string
+ *        ACTIVE:
+ *           type: integer
+ *           nullable: true
  *    GroupData:
- *      type: array
- *      items:
- *        - type: string
- *        - type: string
- *        - type: integer
- *        - type: array
+ *      type: object
+ *      properties:
+ *        OBJECTID:
+ *          type: number
+ *        GROUPNAME:
+ *          type: string
+ *        GROUPID:
+ *          type: string
+ *        ACTIVE:
+ *           type: integer
+ *           nullable: true
+ *    ArcGISEditFeatureResponse:
+ *      type: object
+ *      properties:
+ *        addResults:
+ *          type: array
  *          items:
- *          - type: string
- *        - type: array
+ *            type: object
+ *            properties:
+ *              objectId:
+ *                type: number
+ *              globalId:
+ *                type: string
+ *              success:
+ *                type: boolean
+ *              error:
+ *                type: object
+ *                properties:
+ *                  code:
+ *                    type: number
+ *                  description:
+ *                    type: string
+ *    ArcGISGetGroupsResponse:
+ *      type: object
+ *      properties:
+ *        objectIdFieldName:
+ *          type: string
+ *        globalIdFieldName:
+ *          type: string
+ *        hasZ:
+ *          type: boolean
+ *        hasM:
+ *          type: boolean
+ *        fields:
+ *          type: array
  *          items:
- *          - type: string
+ *            type: object
+ *            properties:
+ *              name:
+ *                type: string
+ *              alias:
+ *                type: string
+ *              type:
+ *                type: string
+ *              length:
+ *                type: number
+ *        features:
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              attributes:
+ *                type: schema
+ *                ref: '#/components/schemas/GroupData'
  */
 
-OracleDB.createPool(dbConf)
+/**
+ * @swagger
+ * /notificationGroups:
+ *  get:
+ *    summary: Get list of groups
+ *    description: Gets a list of groups from notificationGroups
+ *    tags:
+ *      - Notification Groups
+ *    responses:
+ *      '200':
+ *        description: A list of groups
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: array
+ *              items:
+ *                $ref: '#/components/schemas/ArcGISGetGroupsResponse'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+groupsRouter.get("/"/*, logRequest, verifyAndRefreshToken*/, async (req, res) => {
+  try {
+    const getGroupsResult = await WqimsGroup.getActiveFeatures()
+    res.json(getGroupsResult);
+  } catch (error) {
+    const stack= error instanceof Error ? error.stack : "unknown error";
+    appLogger.error("User GET Error:", stack);
+    res.status(500).send({
+      error: error instanceof Error ? error.message : "unknown error",
+      message: "User GET error",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /notificationGroups:
+ *  put:
+ *    summary: adds group to group list
+ *    description: adds a group to notificationGroups
+ *    tags:
+ *      - Notification Groups
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            $ref: '#/components/schemas/AddGroupData'
+ *    responses:
+ *      '200':
+ *        description: Group added successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/AddGroupDataResult'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+groupsRouter.put('/'/*, logRequest, verifyAndRefreshToken*/, async (req, res) => {
+  try {
+    let group: WqimsGroup = new WqimsGroup(req.body);
+
+    const updateResult = await group.checkInactive();
+    if(!updateResult.success) {
+      const addResult = await group.addFeature();
+      if(!addResult.success) throw new Error("Error adding group");
+    }
+    if(group.MEMBERIDS.length) {
+      const membersAddResults = await group.addGroupItems(WqimsGroup.usersRelationshipClassUrl);
+      if(!membersAddResults.success) {
+        appLogger.warn("Group members not added:", membersAddResults.error);
+        group.MEMBERIDS = [];
+      }
+    }
+    if(group.THRESHOLDIDS.length) {
+      const thresholdsAddResults = await group.addGroupItems(WqimsGroup.thresholdsRelationshipClassUrl);
+      if(!thresholdsAddResults.success) {
+        appLogger.warn("Group thresholds not added:", thresholdsAddResults.error);
+        group.THRESHOLDIDS = [];
+      }
+    }
+    res.json(group)
+  } catch (error) {
+    const stack = error instanceof Error ? error.stack : "unknown error";
+    appLogger.error("Group GET Error:", stack);
+    res.status(500).send({
+      error: error instanceof Error ? error.message : "unknown error",
+      message: "Group GET error",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /thresholds:
+ *  post:
+ *    summary: Deactivates a group from groups table
+ *    description: Deactivates a group from groups based on group provided in body
+ *    tags:
+ *      - Notification Groups
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            $ref: '#/components/schemas/GroupData'
+ *    responses:
+ *      '200':
+ *        description: User deactivated successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/ArcGISEditFeatureResponse'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+groupsRouter.post("/", /*, logRequest, verifyAndRefreshToken*/async (req, res) => {
+    try {
+        const group = new WqimsGroup(req.body);
+
+        const updateResult = await group.softDeleteFeature();
+        if(!updateResult.success) {
+          const groupAddResult = await group.addFeature();
+          if (!groupAddResult?.success) throw new Error("Error adding group");
+        }
+        res.json(group)
+    } catch (error) {
+        const stack = error instanceof Error ? error.stack : "unknown error";
+        appLogger.error("Group PUT Error:", stack);
+        res.status(500).send({
+        error: error instanceof Error ? error.message : "unknown error",
+        message: "Group PUT error",
+        });
+    }
+})
+
+/**
+ * @swagger
+ * /notificationGroups:
+ *  patch:
+ *    summary: adds group to group list
+ *    description: adds a group to notificationGroups
+ *    tags:
+ *      - Notification Groups
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            $ref: '#/components/schemas/AddGroupData'
+ *    responses:
+ *      '200':
+ *        description: Group added successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/AddGroupDataResult'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+
+
+/*OracleDB.createPool(dbConf)
   .then(pool => {
     appLogger.info('Connection pool created for notification groups');
 
-    /**
-     * @swagger
-     * /notificationGroups:
-     *  get:
-     *    summary: Get list of groups
-     *    description: Gets a list of groups from DSNGIST wqims.notificationGroups and user ids from users_groups
-     *    tags: 
-     *      - Notification Groups 
-     *    responses:
-     *      '200':
-     *        description: A list of groups
-     *        content:
-     *          application/json:
-     *            schema:
-     *              type: array
-     *              items:
-     *                $ref: '#/components/schemas/GroupData'
-     *      '502':
-     *        description: Bad Gateway
-     *        content:
-     *          application/json:
-     *            schema:
-     *              type: string
-     *              example: 'Bad Gateway: DB Connection Error'
-     */
-    groupsRouter.get('/', async (req, res) => {
-      let connection: Connection | null = null;
-      try {
-        connection = await pool.getConnection();
 
-        const groupDataResult: any = await getActiveGroups(connection);
-        const groupIds = groupDataResult.map((row: any) => row[0]);
 
-        if(groupIds.length === 0) {
-          res.json([]);
-          return;
-        }
-        
-        const memberIdsResult: any = await getMemberIds(groupIds, connection);
 
-        const thresholdIdsResult: any = await getThresholdIds(groupIds, connection);
-
-        const groups: any = groupDataResult.map((group: any) => ({
-          groupId: group[0],
-          objectId: group[1],
-          groupName: group[2],
-          members: memberIdsResult[group[0]] || [],
-          thresholds: thresholdIdsResult[group[0]] || []
-        }));
-        
-        res.json(groups);
-      }
-      catch (err) {
-        appLogger.error(err);
-        res.status(502).json({ error: 'DB Connection Error'});
-      }
-      finally {
-        if(connection) {
-          connection.release((err: any) => {
-            if(err) {
-              appLogger.error("Error releasing connection: " + err)
-            }
-          });
-        }
-      }
-    });
-
-    /**
-     * @swagger
-     * /notificationGroups:
-     *  put:
-     *    summary: adds group to group list
-     *    description: adds a group to DSNGIST wqims.notificationGroups
-     *    tags: 
-     *      - Notification Groups 
-     *    requestBody:
-     *      required: true
-     *      content:
-     *        application/json:
-     *          schema:
-     *            type: object
-     *            properties:
-     *              groupname:
-     *                type: string
-     *              members:
-     *                type: array
-     *                items:
-     *                  object:
-     *              
-     *    responses:
-     *      '201':
-     *        description: Group added successfully
-     *        content:
-     *          application/json:
-     *            schema:
-     *              type: object
-     *              properties:
-     *                groupName:
-     *                  type: string
-     *                groupId:
-     *                  type: string
-     *                objectId:
-     *                  type: string
-     *                members:
-     *                  type: array
-     *      '502':
-     *        description: Bad Gateway
-     *        content:
-     *          application/json:
-     *            schema:
-     *              type: string
-     *              example: 'Bad Gateway: DB Connection Error'
-     */
-    groupsRouter.put('/', async (req, res) => {
-      let connection: Connection | null = null;
-      let result: any;
-      let addedGroup: any;
-      try {
-        connection = await pool.getConnection();
-
-        const groupName = req.body.groupName;
-        const members: any = req.body.members.length ? req.body.members : [];
-        const thresholds: any = req.body.thresholds.length ? req.body.thresholds : [];
-
-        const inactiveGroup: any = await findInactiveGroup(groupName, connection);
-
-        if(inactiveGroup.length) {
-          result = await addInactiveGroup(inactiveGroup[0], connection);
-          addedGroup = {
-            groupName: groupName,
-            groupId: result[0],
-            objectID: result[1],
-            members: members,
-            thresholds: thresholds
-          }
-        }
-        else {
-          result = await addGroup(groupName, connection);
-          addedGroup = {
-            groupName: groupName,
-            groupId: result.GROUPID,
-            objectId: result.OBJECTID,
-            members: members,
-            thresholds: thresholds
-          }
-        }
-
-        
-
-        if(members.length) {
-          const inactiveGroupMembers: any = await findInactiveGroupMembers(addedGroup.groupId, members.map((member: any) => member.globalid), connection);
-
-          if(inactiveGroupMembers.hasOwnProperty(addedGroup.groupId) && inactiveGroupMembers[addedGroup.groupId].length > 1) {
-            await addInactiveGroupMembers(addedGroup.groupId, inactiveGroupMembers[addedGroup.groupId], connection);
-            if(inactiveGroupMembers[addedGroup.groupId].length < members.length) {
-              await addGroupMemberIds(addedGroup.groupId, members.filter((member: any) => !inactiveGroupMembers[addedGroup.groupId].includes(member.globalid)).map((member: any) => member.globalid), connection)
-            }
-          }
-          else {
-            await addGroupMemberIds(addedGroup.groupId, members.map((member: any) => member.globalid), connection)
-          }
-        }
-
-        if(thresholds.length) {
-          const inactiveGroupThresholds: any = await findInactiveGroupThresholds(addedGroup.groupId, thresholds.map((threshold: any) => threshold.GLOBALID), connection);
-
-          if(inactiveGroupThresholds.hasOwnProperty(addedGroup.groupId) && inactiveGroupThresholds[addedGroup.groupId].length) {
-            await addInactiveGroupThresholds(addedGroup.groupId, inactiveGroupThresholds[addedGroup.groupId], connection);
-            if(inactiveGroupThresholds[addedGroup.groupId].length < thresholds.length) {
-              await addThresholdIds(addedGroup.groupId, thresholds.filter((threshold: any) => !inactiveGroupThresholds[addedGroup.groupId].includes(threshold.GLOBALID)).map((threshold: any) => threshold.GLOBALID), connection)
-            }
-          }
-          else {
-            await addThresholdIds(addedGroup.groupId, thresholds.map((t: any) => t.GLOBALID), connection)
-          }
-        }
-         
-        const memberNames = members.map((m:any)=>m.name).join(', ');
-        const thresholdNames = members.map((t:any)=>t.ANALYTE+'-'+t.UPPER_LOWER_SPECS+'-'+t.LOCATION_CODE).join(', ');
-        actionLogger.info(`Group Added ${groupName}, members: ${memberNames}, thresholds: ${thresholdNames}`);
-        res.json(addedGroup);
-
-      } catch (err) {
-        res.status(502).json({ error: 'DB Connection Error'});
-      } finally {
-        if(connection) {
-          connection.release((err: any) => {
-            if(err) {
-              appLogger.error("Error releasing connection: " + err)
-            }
-          });
-        }
-      }
-    });
     
-    /**
+    /!**
      * @swagger
      * /notificationGroups/{groupId}/members:
      *  put:
@@ -276,7 +351,7 @@ OracleDB.createPool(dbConf)
      *            schema:
      *              type: string
      *              example: 'Bad Gateway: DB Connection Error'
-     */
+     *!/
     groupsRouter.put('/:id/members', async (req, res) => {
       let connection: Connection | null = null;
       let result: any;
@@ -312,7 +387,7 @@ OracleDB.createPool(dbConf)
       }
     });
 
-    /**
+    /!**
      * @swagger
      * /notificationGroups/assignThreshold:
      *  post:
@@ -356,7 +431,7 @@ OracleDB.createPool(dbConf)
      *            schema:
      *              type: string
      *              example: 'Bad Gateway: DB Connection Error'
-     */
+     *!/
     groupsRouter.post('/assignThreshold', async (req, res) => {
       let connection: Connection | null = null;
       try {
@@ -394,7 +469,7 @@ OracleDB.createPool(dbConf)
       }
     });
 
-    /**
+    /!**
      * @swagger
      * /notificationGroups/{groupId}:
      *  delete:
@@ -419,7 +494,7 @@ OracleDB.createPool(dbConf)
      *            schema:
      *              type: string
      *              example: 'Bad Gateway: DB Connection Error'
-     */
+     *!/
     groupsRouter.delete('/:id', async (req, res) => {
       let connection: Connection | null = null;
       try {
@@ -455,7 +530,7 @@ OracleDB.createPool(dbConf)
       }
     });
 
-    /**
+    /!**
      * @swagger
      * /notificationGroups/{groupId}/members:
      *  post:
@@ -491,7 +566,7 @@ OracleDB.createPool(dbConf)
      *            schema:
      *              type: string
      *              example: 'Bad Gateway: DB Connection Error'
-     */
+     *!/
     groupsRouter.post('/:id/members', async (req, res) => {
       let connection: Connection | null = null;
       try {
@@ -521,7 +596,7 @@ OracleDB.createPool(dbConf)
       }
     });
 
-    /**
+    /!**
      * @swagger
      * /notificationGroups/{groupId}/deleteThreshold:
      *  post:
@@ -557,7 +632,7 @@ OracleDB.createPool(dbConf)
      *            schema:
      *              type: string
      *              example: 'Bad Gateway: DB Connection Error'
-     */
+     *!/
     groupsRouter.post('/:id/deleteThreshold', async (req, res) => {
       let connection: Connection | null = null;
       try {
@@ -586,7 +661,7 @@ OracleDB.createPool(dbConf)
       }
     });
 
-    /**
+    /!**
      * @swagger
      * /notificationGroups/{groupId}:
      * patch:
@@ -618,7 +693,7 @@ OracleDB.createPool(dbConf)
      *                type: array
      *                items:
      *                  type: string
-     */
+     *!/
     groupsRouter.patch('/:id', async (req, res) => {
       let connection: Connection | null = null;
       try {
@@ -701,9 +776,9 @@ OracleDB.createPool(dbConf)
   })
   .catch(error => {
     appLogger.error("Error creating connection pool:", error)
-  })
+  })*/
 
-function getActiveGroups(connection:any) {
+/*function getActiveGroups(connection:any) {
   return new Promise((resolve, reject) => {
     const query = `select groupid, objectid, groupName FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpsTbl} where ACTIVE <> 0`
     connection.execute(query, [], (err: any, result: any) => {
@@ -1142,5 +1217,6 @@ function getActiveThresholds(groupId: string, connection: Connection) {
       }
     });
   })
-}
+}*/
+
 export default groupsRouter; 

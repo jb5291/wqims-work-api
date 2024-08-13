@@ -1,68 +1,13 @@
 import express from "express";
-import {ApplicationCredentialsManager} from "@esri/arcgis-rest-request";
 import {
-  addFeatures,
-    deleteFeatures,
   IEditFeatureResult,
-  IFeature,
-  IQueryFeaturesResponse,
-  IQueryRelatedResponse,
-  IQueryResponse,
-  IRelatedRecordGroup,
-  queryFeatures,
-  queryRelated,
-  updateFeatures,
 } from "@esri/arcgis-rest-feature-service";
-import {v4 as uuidv4} from "uuid";
-import {authConfig} from "../util/secrets";
 
 import {appLogger} from "../util/appLogger";
 import graphHelper from "../util/graph";
-import {gisCredentialManager} from "./auth";
+import {WqimsUser} from "../models/WqimsUser";
 
 const usersRouter = express.Router();
-
-type WqimsUser = {
-  OBJECTID: number | null;
-  GLOBALID: string | null;
-  NAME: string;
-  DEPARTMENT: string;
-  POSITION: string;
-  DIVISION: string;
-  PHONENUMBER: string;
-  EMAIL: string;
-  ROLE: string;
-  RAPIDRESPONSETEAM: number;
-  ALTPHONENUMBER: string;
-  STARTTIME: string;
-  ENDTIME: string;
-  ACTIVE: number | null;
-};
-type WqimsRole = {
-  OBJECTID: number;
-  ROLE: string;
-  ADD_USER: number;
-  EDIT_USER: number;
-  DELETE_USER: number;
-  ASSIGN_USER_ROLE: number;
-  ADD_THRESHOLD: number;
-  EDIT_THRESHOLD: number;
-  DELETE_THRESHOLD: number;
-  ADD_GROUP: number;
-  ADD_GROUP_USER: number;
-  ADD_GROUP_THRESHOLD: number;
-  EDIT_GROUP: number;
-  REMOVE_GROUP_USER: number;
-  REMOVE_GROUP: number;
-  REVIEW_ALERTS: number;
-  ACKNOWLEDGE_ALERTS: number;
-  GLOBALID: string;
-};
-
-const featureUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`;
-const groupsRelationshipClassUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users_groups}`;
-const rolesRelationshipClassUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users_roles}`;
-const rolesUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.roles}`;
 
 /**
  * @swagger
@@ -185,37 +130,8 @@ const rolesUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.ro
  *            type: object
  *            properties:
  *              attributes:
- *                type: object
- *                properties:
- *                  OBJECTID:
- *                    type: number
- *                  GLOBALID:
- *                    type: string
- *                  NAME:
- *                    type: string
- *                  DEPARTMENT:
- *                    type: string
- *                  POSITION:
- *                    type: string
- *                  DIVISION:
- *                    type: string
- *                  PHONENUMBER:
- *                    type: string
- *                  EMAIL:
- *                    type: string
- *                  ROLE:
- *                    type: string
- *                  RAPIDRESPONSETEAM:
- *                    type: integer
- *                  ALTPHONENUMBER:
- *                    type: string
- *                    nullable: true
- *                  STARTTIME:
- *                    type: string
- *                    nullable: true
- *                  ENDTIME:
- *                    type: string
- *                    nullable: true
+ *                type: schema
+ *                ref: '#/components/schemas/UserData'
  */
 
 
@@ -244,19 +160,10 @@ const rolesUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.ro
  */
 usersRouter.get("/" /*, logRequest, verifyAndRefreshToken*/, async (req, res) => {
   try {
-    const response: IQueryFeaturesResponse | IQueryResponse = await queryFeatures({
-      url: `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`,
-      where: "ACTIVE=1",
-      authentication: gisCredentialManager,
-    });
-
-    if ("features" in response) {
-      res.json(response.features);
-    } else {
-      throw new Error("Error getting data");
-    }
+    const getUserResult = await WqimsUser.getActiveFeatures();
+    res.json(getUserResult);
   } catch (error) {
-    const stack: string | undefined = error instanceof Error ? error.stack : "unknown error";
+    const stack = error instanceof Error ? error.stack : "unknown error";
     appLogger.error("User GET Error:", stack);
     res.status(500).send({
       error: error instanceof Error ? error.message : "unknown error",
@@ -269,8 +176,8 @@ usersRouter.get("/" /*, logRequest, verifyAndRefreshToken*/, async (req, res) =>
  * @swagger
  * /users:
  *  put:
- *    summary: Add a new user to wqims.users
- *    description: Adds a new user to wqims.users table
+ *    summary: Add a new user to users
+ *    description: Adds a new user to users table
  *    tags:
  *      - Users
  *    requestBody:
@@ -285,7 +192,7 @@ usersRouter.get("/" /*, logRequest, verifyAndRefreshToken*/, async (req, res) =>
  *        content:
  *          application/json:
  *            schema:
- *              $ref: '#/components/schemas/ArcGISEditFeatureResponse'
+ *              $ref: '#/components/schemas/UserData'
  *      '500':
  *        description: Internal Server Error
  *        content:
@@ -296,47 +203,19 @@ usersRouter.get("/" /*, logRequest, verifyAndRefreshToken*/, async (req, res) =>
  */
 usersRouter.put("/", async (req, res) => {
   try {
-    const user: WqimsUser = req.body;
-    if (!user) throw new Error("User data not provided");
+    const user = new WqimsUser(req.body);
 
-    const response: IQueryFeaturesResponse | IQueryResponse = await queryFeatures({
-      url: featureUrl,
-      where: `ACTIVE=0 AND EMAIL='${user.EMAIL}'`,
-      authentication: gisCredentialManager,
-    });
-
-    if ("features" in response && response.features.length > 0) {
-      const existingUser = response.features[0].attributes;
-      user.OBJECTID = existingUser.OBJECTID;
-      user.GLOBALID = existingUser.GLOBALID;
-      user.ACTIVE = 1;
-
-      const updateResponse: {updateResults: IEditFeatureResult[]} = await updateFeatures({
-        url: featureUrl,
-        features: [{ attributes: user }],
-        authentication: gisCredentialManager,
-      });
-
-      const updateResult: IEditFeatureResult = updateResponse.updateResults[0];
-      await updateUserRole(gisCredentialManager, user);
-      res.json(updateResult);
-    } else {
-      user.GLOBALID = `{${uuidv4().toUpperCase()}}`;
-      user.ACTIVE = 1;
-      const { OBJECTID, ...userWithoutOID } = user;
-
-      const addResponse: {addResults: IEditFeatureResult[]} = await addFeatures({
-        url: featureUrl,
-        features: [{ attributes: userWithoutOID }],
-        authentication: gisCredentialManager,
-      });
-
-      user.OBJECTID = addResponse.addResults[0].objectId;
-      await updateUserRole(gisCredentialManager, user);
-      res.json(addResponse.addResults[0]);
+    const updateResult = await user.checkInactive()
+    if (!updateResult.success) { // true if user was reactivated
+      const userAddResult = await user.addFeature();
+      if (!userAddResult?.success) throw new Error("Error adding user");
     }
+    const userRoleEditResult = await user.updateUserRole();
+    if(!userRoleEditResult?.success) throw new Error("Error updating user role");
+
+    res.json(user)
   } catch (error) {
-    const stack: string | undefined = error instanceof Error ? error.stack : "unknown error";
+    const stack = error instanceof Error ? error.stack : "unknown error";
     appLogger.error("User PUT Error:", stack);
     res.status(500).send({
       error: error instanceof Error ? error.message : "unknown error",
@@ -349,8 +228,8 @@ usersRouter.put("/", async (req, res) => {
  * @swagger
  * /users:
  *  post:
- *    summary: Deactivates a user from wqims.users
- *    description: Deactivates a user from wqims.users based on ID provided in body
+ *    summary: Deactivates a user from users table
+ *    description: Deactivates a user from users based on user provided in body
  *    tags:
  *      - Users
  *    requestBody:
@@ -374,32 +253,24 @@ usersRouter.put("/", async (req, res) => {
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.post("/", async (req, res) => {
+usersRouter.post("/", /*, logRequest, verifyAndRefreshToken*/ async (req, res) => {
   try {
-    const user: WqimsUser = req.body;
-    if (!user) throw new Error("User data not provided");
+    const user: WqimsUser = new WqimsUser(req.body);
 
-    user.ACTIVE = 0;
-    const response = await updateFeatures({
-      url: featureUrl,
-      features: [{ attributes: user }],
-      authentication: gisCredentialManager,
-    });
-
-    const updateResult = response.updateResults[0];
+    const updateResult = await user.softDeleteFeature();
     if (updateResult.success) {
-      await deleteUserRelClassRecord(gisCredentialManager, user, rolesRelationshipClassUrl);
-      await deleteUserRelClassRecord(gisCredentialManager, user, groupsRelationshipClassUrl);
+      //await user.deleteUserRelClassRecord(WqimsUser.rolesRelationshipClassUrl);
+      //await user.deleteUserRelClassRecord(WqimsUser.groupsRelationshipClassUrl);
       res.json(updateResult);
     } else {
       throw new Error(updateResult.error?.description || "Error deactivating user");
     }
   } catch (error) {
-    const stack: string | undefined = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("User DELETE error:", stack);
+    const stack = error instanceof Error ? error.stack : "unknown error";
+    appLogger.error("User POST error:", stack);
     res.status(500).send({
       error: error instanceof Error ? error.message : "unknown error",
-      message: "User DELETE error",
+      message: "User POST error",
     });
   }
 });
@@ -408,8 +279,8 @@ usersRouter.post("/", async (req, res) => {
  * @swagger
  * /users:
  *  patch:
- *    summary: Update a user in wqims.users
- *    description: Updates a user in wqims.users based on ID provided in body
+ *    summary: Update a user in users table
+ *    description: Updates a user in table based on the user provided in body
  *    tags:
  *      - Users
  *    requestBody:
@@ -435,26 +306,21 @@ usersRouter.post("/", async (req, res) => {
  */
 usersRouter.patch("/", async (req, res) => {
   try {
-    const user: WqimsUser = req.body;
+    const user: WqimsUser = new WqimsUser(req.body);
 
-    const response: {updateResults: IEditFeatureResult[]} = await updateFeatures({
-      url: featureUrl,
-      authentication: gisCredentialManager,
-      features: [{ attributes: user }],
-    });
-
-    const updateResult: IEditFeatureResult = response.updateResults[0];
-    if (updateResult.success) {
-      const roleResponse: IEditFeatureResult | undefined = await updateUserRole(gisCredentialManager, user);
-      if (roleResponse && roleResponse.error) {
-        throw new Error(roleResponse.error.description);
-      }
-      res.json(updateResult);
-    } else {
+    const updateResult: IEditFeatureResult = await user.updateFeature();
+    if (!updateResult.success) {
       throw new Error(updateResult.error?.description || "Error updating user");
     }
+
+    const roleResponse = await user.updateUserRole();
+    if (!roleResponse?.success) {
+      throw new Error(roleResponse?.error?.description || "Error updating user role");
+    }
+    res.json(updateResult);
+
   } catch (error) {
-    const stack: string | undefined = error instanceof Error ? error.stack : "unknown error";
+    const stack= error instanceof Error ? error.stack : "unknown error";
     appLogger.error("User PATCH error:", stack);
     res.status(500).send({
       error: error instanceof Error ? error.message : "unknown error",
@@ -473,120 +339,4 @@ usersRouter.use("/search", async (req, res) => {
     res.status(500).send({ error: error instanceof Error ? error.message : "Unknown error searching for users" });
   }
 });
-
-async function getRoleIds(session: ApplicationCredentialsManager | string): Promise<WqimsRole[]> {
-  const response: IQueryFeaturesResponse | IQueryResponse = await queryFeatures({
-    url: rolesUrl,
-    where: "1=1",
-    outFields: "*",
-    authentication: session,
-  });
-
-  if ("features" in response) {
-    return response.features.map((feature: IFeature) => feature.attributes as WqimsRole);
-  } else {
-    throw new Error("No features found");
-  }
-}
-
-// Fetches the role from the rel class, checks if user input role matches
-// updates the role if it doesn't match
-// adds the role if it doesn't exist
-// returns the IEditFeatureResponse
-async function updateUserRole(session: ApplicationCredentialsManager | string, user: WqimsUser): Promise<IEditFeatureResult | undefined> {
-  const objectId: number = user.OBJECTID || 0;
-  const allowedRoles: string[] = ["Admin", "Editor", "Viewer"];
-  if (!allowedRoles.includes(user.ROLE)) {
-    return Promise.reject("Invalid role");
-  }
-
-  const response: IQueryRelatedResponse = await queryRelated({
-    url: featureUrl,
-    objectIds: [objectId],
-    outFields: ["*"],
-    relationshipId: 0,
-    authentication: session,
-  });
-
-  const roles: WqimsRole[] = await getRoleIds(session);
-  const relatedRecordGroup: IRelatedRecordGroup = response.relatedRecordGroups?.[0];
-  const relatedRecord: IFeature | undefined = relatedRecordGroup?.relatedRecords?.[0];
-
-  if (relatedRecord?.attributes.ROLE === user.ROLE.toLowerCase()) {
-    return { objectId, success: true };
-  }
-
-  const userRolesQueryResponse: IQueryFeaturesResponse | IQueryResponse = await queryFeatures({
-    url: rolesRelationshipClassUrl,
-    where: `USER_ID='${user.GLOBALID}'`,
-    outFields: "*",
-    authentication: session,
-  });
-
-  if ("features" in userRolesQueryResponse && userRolesQueryResponse.features.length > 0) {
-    const rid = userRolesQueryResponse.features?.[0]?.attributes.RID;
-    if (!rid) {
-      return Promise.reject("No related records found in related record group.");
-    }
-    const userRolesUpdateResponse: {updateResults: IEditFeatureResult[]} = await updateFeatures({
-      url: rolesRelationshipClassUrl,
-      features: [{
-        attributes: {
-          RID: rid,
-          USER_ID: user.GLOBALID,
-          ROLE_ID: roles.find((role: WqimsRole) => role.ROLE === user.ROLE.toLowerCase())?.GLOBALID,
-        },
-      }],
-      authentication: session,
-    });
-
-    if (userRolesUpdateResponse.updateResults[0].success) {
-      return userRolesUpdateResponse.updateResults[0];
-    }
-  } else {
-    const roleAddResponse: {addResults: IEditFeatureResult[]} = await addFeatures({
-      url: rolesRelationshipClassUrl,
-      features: [{
-        attributes: {
-          USER_ID: user.GLOBALID,
-          ROLE_ID: roles.find((role: WqimsRole) => role.ROLE === user.ROLE.toLowerCase())?.GLOBALID,
-        },
-      }],
-      authentication: session,
-    });
-
-    if (roleAddResponse.addResults[0].success) {
-      return roleAddResponse.addResults[0];
-    }
-
-    return Promise.reject(roleAddResponse.addResults[0]);
-  }
-}
-async function deleteUserRelClassRecord(session: ApplicationCredentialsManager | string, user: WqimsUser, relClassUrl: string): Promise<IEditFeatureResult | undefined> {
-  const response: IQueryFeaturesResponse | IQueryResponse = await queryFeatures({
-    url: relClassUrl,
-    where: `USER_ID='${user.GLOBALID}'`,
-    outFields: "*",
-    authentication: session,
-  });
-  if ("features" in response && response.features.length > 0) {
-    const rid = response.features?.[0]?.attributes.RID;
-    if (!rid) throw new Error("No related records found in related record group.");
-
-    const deleteResponse = await deleteFeatures({
-      url: relClassUrl,
-      objectIds: [rid],
-      where: `USER_ID='${user.GLOBALID}'`,
-      authentication: session,
-    });
-
-    if (deleteResponse.deleteResults[0].success) {
-      return deleteResponse.deleteResults[0];
-    } else {
-      throw new Error(deleteResponse.deleteResults[0].error?.description);
-    }
-  } else {
-    return Promise.resolve({ objectId: user.OBJECTID as number, success: true });
-  }
-}
 export default usersRouter;
