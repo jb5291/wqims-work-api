@@ -1,11 +1,9 @@
 import express from "express";
-import {
-  IEditFeatureResult,
-} from "@esri/arcgis-rest-feature-service";
+import { IEditFeatureResult } from "@esri/arcgis-rest-feature-service";
 
-import {appLogger} from "../util/appLogger";
+import { appLogger } from "../util/appLogger";
 import graphHelper from "../util/graph";
-import {WqimsUser} from "../models/WqimsUser";
+import { WqimsUser } from "../models/WqimsUser";
 
 const usersRouter = express.Router();
 
@@ -134,7 +132,6 @@ const usersRouter = express.Router();
  *                ref: '#/components/schemas/UserData'
  */
 
-
 /**
  * @swagger
  * /users:
@@ -205,15 +202,16 @@ usersRouter.put("/", async (req, res) => {
   try {
     const user = new WqimsUser(req.body);
 
-    const updateResult = await user.checkInactive()
-    if (!updateResult.success) { // true if user was reactivated
+    const updateResult = await user.checkInactive();
+    if (!updateResult.success) {
+      // true if user was reactivated
       const userAddResult = await user.addFeature();
       if (!userAddResult?.success) throw new Error("Error adding user");
     }
     const userRoleEditResult = await user.updateUserRole();
-    if(!userRoleEditResult?.success) throw new Error("Error updating user role");
+    if (!userRoleEditResult?.success) throw new Error("Error updating user role");
 
-    res.json(user)
+    res.json(user);
   } catch (error) {
     const stack = error instanceof Error ? error.stack : "unknown error";
     appLogger.error("User PUT Error:", stack);
@@ -253,27 +251,30 @@ usersRouter.put("/", async (req, res) => {
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.post("/", /*, logRequest, verifyAndRefreshToken*/ async (req, res) => {
-  try {
-    const user: WqimsUser = new WqimsUser(req.body);
+usersRouter.post(
+  "/",
+  /*, logRequest, verifyAndRefreshToken*/ async (req, res) => {
+    try {
+      const user: WqimsUser = new WqimsUser(req.body);
 
-    const updateResult = await user.softDeleteFeature();
-    if (updateResult.success) {
-      //await user.deleteUserRelClassRecord(WqimsUser.rolesRelationshipClassUrl);
-      //await user.deleteUserRelClassRecord(WqimsUser.groupsRelationshipClassUrl);
-      res.json(updateResult);
-    } else {
-      throw new Error(updateResult.error?.description || "Error deactivating user");
+      const updateResult = await user.softDeleteFeature();
+      if (updateResult.success) {
+        //await user.deleteUserRelClassRecord(WqimsUser.rolesRelationshipClassUrl);
+        //await user.deleteUserRelClassRecord(WqimsUser.groupsRelationshipClassUrl);
+        res.json(updateResult);
+      } else {
+        throw new Error(updateResult.error?.description || "Error deactivating user");
+      }
+    } catch (error) {
+      const stack = error instanceof Error ? error.stack : "unknown error";
+      appLogger.error("User POST error:", stack);
+      res.status(500).send({
+        error: error instanceof Error ? error.message : "unknown error",
+        message: "User POST error",
+      });
     }
-  } catch (error) {
-    const stack = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("User POST error:", stack);
-    res.status(500).send({
-      error: error instanceof Error ? error.message : "unknown error",
-      message: "User POST error",
-    });
   }
-});
+);
 
 /**
  * @swagger
@@ -318,9 +319,8 @@ usersRouter.patch("/", async (req, res) => {
       throw new Error(roleResponse?.error?.description || "Error updating user role");
     }
     res.json(updateResult);
-
   } catch (error) {
-    const stack= error instanceof Error ? error.stack : "unknown error";
+    const stack = error instanceof Error ? error.stack : "unknown error";
     appLogger.error("User PATCH error:", stack);
     res.status(500).send({
       error: error instanceof Error ? error.message : "unknown error",

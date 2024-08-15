@@ -1,25 +1,19 @@
-import express from 'express';
-import OracleDB,  { Connection, outFormat } from 'oracledb';
-import jwt from 'jsonwebtoken';
+import express from "express";
+import OracleDB, { Connection, outFormat } from "oracledb";
+import cookieParser from "cookie-parser";
+import jwt from "jsonwebtoken";
 
-import { authConfig, WQIMS_DB_CONFIG } from '../util/secrets';
-import { appLogger, actionLogger } from '../util/appLogger';
-import cookieParser from 'cookie-parser';
-// import { checkToken } from './auth';
-//import { getIdFromEmail } from './auth';
+import { appLogger } from "../util/appLogger";
+import { checkToken } from "./auth";
 
 const alertsRouter = express.Router();
-const dbConf = {
-  user: WQIMS_DB_CONFIG.username,
-  password: WQIMS_DB_CONFIG.password,
-  connectString: WQIMS_DB_CONFIG.connection_string
-};
+
 alertsRouter.use(cookieParser());
 /**
  * @swagger
  * components:
  *  schemas:
- *    Alert:
+ *    AlertData:
  *      type: object
  *      properties:
  *        OBJECTID:
@@ -55,37 +49,54 @@ alertsRouter.use(cookieParser());
  *        ANALYTE:
  *          type: string
  */
+alertsRouter.get("/", async (req, res) => {
+  try {
+    const userId = checkToken(req);
 
-OracleDB.createPool(dbConf)
-.then(pool => {
-  appLogger.info('connection pool created for alerts')
-  
-  /**
-   * @swagger
-   * /alerts:
-   *  get:
-   *    summary: Get alerts assigned to user
-   *    description: Get alerts from wqims.limsalerts, will change once other alerts come in
-   *    tags:
-   *      - Alerts
-   *    responses:
-   *       '200':
-   *         description: JSON array of alerts
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               items:
-   *                 $ref: '#/components/schemas/Alert'
-    *       '500':
-    *         description: Error getting alerts
-    *         content:
-    *           application/json:
-    *             schema:
-    *               type: string
-    *               example: Error getting alerts
-   */
-  /* alertsRouter.get('/', async (req, res) => {
+    if (userId === null) {
+      return res.status(401).send("Unauthorized");
+      }
+
+  } catch (error) {
+    const stack = error instanceof Error ? error.stack : "unknown error";
+    appLogger.error("User PUT Error:", stack);
+    res.status(500).send({
+      error: error instanceof Error ? error.message : "unknown error",
+      message: "User PUT error",
+    });
+  }
+});
+
+//OracleDB.createPool(dbConf)
+//.then(pool => {
+//appLogger.info('connection pool created for alerts')
+
+/**
+ * @swagger
+ * /alerts:
+ *  get:
+ *    summary: Get alerts assigned to user
+ *    description: Get alerts from wqims.limsalerts, will change once other alerts come in
+ *    tags:
+ *      - Alerts
+ *    responses:
+ *       '200':
+ *         description: JSON array of alerts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               items:
+ *                 $ref: '#/components/schemas/Alert'
+ *       '500':
+ *         description: Error getting alerts
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: string
+ *               example: Error getting alerts
+ */
+/* alertsRouter.get('/', async (req, res) => {
     let connection: Connection | null = null;
     let userEmail: string = '';
     let result: any = null;
@@ -115,7 +126,7 @@ OracleDB.createPool(dbConf)
     }
   }); */
 
-  /**
+/**
    * @swagger
    * /alerts/all:
    *  get:
@@ -139,7 +150,7 @@ OracleDB.createPool(dbConf)
     *             schema:
     *               type: string
     *               example: Error getting alerts
-   */
+   *
   alertsRouter.get('/all', async (req, res) => {
     pool.getConnection((err, conn) => {
       if(err) {
@@ -230,7 +241,7 @@ OracleDB.createPool(dbConf)
   *              type: string
   *              example: 'Bad Gateway: DB Connection Error'
   */
-  /* alertsRouter.post('/status/:alertId', async (req, res) => {
+/* alertsRouter.post('/status/:alertId', async (req, res) => {
     const alertId = req.params.alertId;
     const status = req.body?.STATUS === undefined ? 'ERROR' : req.body.STATUS;
     const comments = req.body?.COMMENTS === undefined ? '' : req.body.COMMENTS;
@@ -303,59 +314,8 @@ OracleDB.createPool(dbConf)
         }
       }
     }
-  }); */
+  }); 
 })
-
-/** 
-  * @swagger
-  * /alerts/acknowledge:
-  *  post:
-  *    summary: Send everbridge alert 
-  *    description: Updates an alert in wqims.limsalerts based on the provided ID
-  *    tags:
-  *      - Alerts
-  *    requestBody:
-  *      required: true  
-  *      content:
-  *        application/json:
-  *          schema: 
-  *             type: object
-  *             properties:
-  *               status:
-  *                 type: string
-  *               comments:
-  *                 type: string
-  *               change_status:
-  *                 type: boolean
-  *    responses:
-  *      '200':
-  *        description: Alert status changed successfully
-  *        content:
-  *          application/json:
-  *            schema:
-  *              type: object
-  *      '502':
-  *        description: Bad Gateway
-  *        content:
-  *          application/json:
-  *            schema:
-  *              type: string
-  *              example: 'Bad Gateway: DB Connection Error'
-  */
-/* alertsRouter.post('/acknowledge', async (req, res) => {
-  const alertInfo = req.body.alert;
-  let userEmail: any;
-  userEmail = checkToken(req, res);
-  if(userEmail.hasOwnProperty('status')) { // returned error
-    res.status(userEmail.status).json(userEmail)
-  }
-  const userName = userEmail.split('@')[0].replace('.', '_');
-  try {
-    
-  } catch {
-
-  }
-}) */
 
 function getAlerts(email: string, connection: Connection) {
   return new Promise((resolve, reject) => {
@@ -473,6 +433,6 @@ function getTimeStamp(): string {
   const ampm = hours24 < 12 ? 'AM' : 'PM';
 
   return `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}.${ff} ${ampm}`
-}
+}*/
 
 export default alertsRouter;
