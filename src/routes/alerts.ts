@@ -55,7 +55,7 @@ alertsRouter.get("/", async (req, res) => {
 
     if (userId === null) {
       return res.status(401).send("Unauthorized");
-      }
+    }
 
   } catch (error) {
     const stack = error instanceof Error ? error.stack : "unknown error";

@@ -9,23 +9,28 @@ class WqimsAlerts extends WqimsObject {
   GLOBALID: string | null;
   SAMPLENUM: string;
   LOCATION: string;
+  LOCCODE: string;
   COLLECTDATE: string;
   SAMPLECOLLECTOR: string;
   ACODE: string;
+  ANALYTE: string;
   ANALYSEDDATE: string;
   ANALYSEDBY: string;
-  ADDR1: string;
-  ADDR5: string;
+  DATEVALIDATED: string;
+  VALIDATEDBY: string;
   GEOCODEMATCHEDADDRESS: string;
   RESULT: string;
-  LOCOCODE: string;
   WARNING_STATUS: string;
-  ANALYTE: string;
   STATUS: string;
   COMMENTS: string;
-  ACTIVE: number | undefined;
+  ACK_TIME: string;
+  ACK_BY: string;
+  CLOSED_TIME: string;
+  CLOSED_BY: string;
   THRESHOLD_ID: string | null;
   TEMPLATE_ID: string | null;
+  RESULT_ID: string | null;
+  ACTIVE!: number;
 
   constructor(body: Request["body"] | null);
   constructor(
@@ -39,18 +44,23 @@ class WqimsAlerts extends WqimsObject {
     ACODE: string,
     ANALYSEDDATE: string,
     ANALYSEDBY: string,
-    ADDR1: string,
-    ADDR5: string,
+    DATEVALIDATED: string,
+    VALIDATEDBY: string,
     GEOCODEMATCHEDADDRESS: string,
     RESULT: string,
-    LOCOCODE: string,
+    LOCCODE: string,
     WARNING_STATUS: string,
     ANALYTE: string,
     STATUS: string,
     COMMENTS: string,
-    ACTIVE: number | undefined,
+    ACK_TIME: string,
+    ACK_BY: string,
+    CLOSED_TIME: string,
+    CLOSED_BY: string,
     THRESHOLD_ID: string | null,
-    TEMPLATE_ID: string | null
+    TEMPLATE_ID: string | null,
+    RESULT_ID: string | null,
+    ACTIVE: number
   );
 
   constructor(
@@ -64,18 +74,23 @@ class WqimsAlerts extends WqimsObject {
     ACODE?: string,
     ANALYSEDDATE?: string,
     ANALYSEDBY?: string,
-    ADDR1?: string,
-    ADDR5?: string,
+    DATEVALIDATED?: string,
+    VALIDATEDBY?: string,
     GEOCODEMATCHEDADDRESS?: string,
     RESULT?: string,
-    LOCOCODE?: string,
+    LOCCODE?: string,
     WARNING_STATUS?: string,
     ANALYTE?: string,
     STATUS?: string,
     COMMENTS?: string,
-    ACTIVE?: number | undefined,
+    ACK_TIME?: string,
+    ACK_BY?: string,
+    CLOSED_TIME?: string,
+    CLOSED_BY?: string,
     THRESHOLD_ID?: string | null,
-    TEMPLATE_ID?: string | null
+    TEMPLATE_ID?: string | null,
+    RESULT_ID?: string | null,
+    ACTIVE?: number
   ) {
     if (body) {
       super(body.OBJECTID, body.ACTIVE);
@@ -87,17 +102,22 @@ class WqimsAlerts extends WqimsObject {
       this.ACODE = body.ACODE;
       this.ANALYSEDDATE = body.ANALYSEDDATE;
       this.ANALYSEDBY = body.ANALYSEDBY;
-      this.ADDR1 = body.ADDR1;
-      this.ADDR5 = body.ADDR5;
+      this.DATEVALIDATED = body.DATEVALIDATED;
+      this.VALIDATEDBY = body.VALIDATEDBY;
       this.GEOCODEMATCHEDADDRESS = body.GEOCODEMATCHEDADDRESS;
       this.RESULT = body.RESULT;
-      this.LOCOCODE = body.LOCOCODE;
+      this.LOCCODE = body.LOCCODE;
       this.WARNING_STATUS = body.WARNING_STATUS;
       this.ANALYTE = body.ANALYTE;
       this.STATUS = body.STATUS;
       this.COMMENTS = body.COMMENTS;
+      this.ACK_TIME = body.ACK_TIME;
+      this.ACK_BY = body.ACK_BY;
+      this.CLOSED_TIME = body.CLOSED_TIME;
+      this.CLOSED_BY = body.CLOSED_BY;
       this.THRESHOLD_ID = body.THRESHOLD_ID;
       this.TEMPLATE_ID = body.TEMPLATE_ID;
+      this.RESULT_ID = body.RESULT_ID;
     } else {
       super(OBJECTID, ACTIVE);
       this.GLOBALID = GLOBALID ? GLOBALID : null;
@@ -108,17 +128,22 @@ class WqimsAlerts extends WqimsObject {
       this.ACODE = ACODE ? ACODE : "";
       this.ANALYSEDDATE = ANALYSEDDATE ? ANALYSEDDATE : "";
       this.ANALYSEDBY = ANALYSEDBY ? ANALYSEDBY : "";
-      this.ADDR1 = ADDR1 ? ADDR1 : "";
-      this.ADDR5 = ADDR5 ? ADDR5 : "";
+      this.DATEVALIDATED = DATEVALIDATED ? DATEVALIDATED : "";
+      this.VALIDATEDBY = VALIDATEDBY ? VALIDATEDBY : "";
       this.GEOCODEMATCHEDADDRESS = GEOCODEMATCHEDADDRESS ? GEOCODEMATCHEDADDRESS : "";
       this.RESULT = RESULT ? RESULT : "";
-      this.LOCOCODE = LOCOCODE ? LOCOCODE : "";
+      this.LOCCODE = LOCCODE ? LOCCODE : "";
       this.WARNING_STATUS = WARNING_STATUS ? WARNING_STATUS : "";
       this.ANALYTE = ANALYTE ? ANALYTE : "";
       this.STATUS = STATUS ? STATUS : "";
       this.COMMENTS = COMMENTS ? COMMENTS : "";
+      this.ACK_TIME = ACK_TIME ? ACK_TIME : "";
+      this.ACK_BY = ACK_BY ? ACK_BY : "";
+      this.CLOSED_TIME = CLOSED_TIME ? CLOSED_TIME : "";
+      this.CLOSED_BY = CLOSED_BY ? CLOSED_BY : "";
       this.THRESHOLD_ID = THRESHOLD_ID ? THRESHOLD_ID : null;
       this.TEMPLATE_ID = TEMPLATE_ID ? TEMPLATE_ID : null;
+      this.RESULT_ID = RESULT_ID ? RESULT_ID : null;
     }
   }
 
