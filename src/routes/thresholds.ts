@@ -2,6 +2,7 @@ import express from "express";
 
 import { appLogger } from "../util/appLogger";
 import { WqimsThreshold } from "../models/WqimsThreshold";
+import { logRequest, verifyAndRefreshToken } from "./auth";
 
 const thresholdsRouter = express.Router();
 
@@ -149,18 +150,16 @@ const thresholdsRouter = express.Router();
  *              type: string
  *              example: 'Internal Server Error'
  */
-thresholdsRouter.get(
-  "/",
-  /* logRequest, verifyAndRefreshToken,*/ async (req, res) => {
+thresholdsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     try {
       const getThresholdResult = await WqimsThreshold.getActiveFeatures();
       res.json(getThresholdResult);
     } catch (error) {
       const stack = error instanceof Error ? error.stack : "unknown error";
-      appLogger.error("User GET Error:", stack);
+      appLogger.error("Threshold GET Error:", stack);
       res.status(500).send({
         error: error instanceof Error ? error.message : "unknown error",
-        message: "User GET error",
+        message: "Threshold GET error",
       });
     }
   }
@@ -195,9 +194,7 @@ thresholdsRouter.get(
  *              type: string
  *              example: 'Internal Server Error'
  */
-thresholdsRouter.put(
-  "/",
-  /* logRequest, verifyAndRefreshToken,*/ async (req, res) => {
+thresholdsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     try {
       const threshold: WqimsThreshold = new WqimsThreshold(req.body);
 
@@ -248,7 +245,7 @@ thresholdsRouter.put(
  *              type: string
  *              example: 'Internal Server Error'
  */
-thresholdsRouter.post("/", async (req, res) => {
+thresholdsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const threshold: WqimsThreshold = new WqimsThreshold(req.body);
 
@@ -262,10 +259,10 @@ thresholdsRouter.post("/", async (req, res) => {
     res.json(updateResult);
   } catch (error) {
     const stack = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("User POST error:", stack);
+    appLogger.error("Threshold POST error:", stack);
     res.status(500).send({
       error: error instanceof Error ? error.message : "unknown error",
-      message: "User POST error",
+      message: "Threshold POST error",
     });
   }
 });
@@ -299,7 +296,7 @@ thresholdsRouter.post("/", async (req, res) => {
  *              type: string
  *              example: 'Internal Server Error'
  */
-thresholdsRouter.patch("/", async (req, res) => {
+thresholdsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const threshold: WqimsThreshold = new WqimsThreshold(req.body);
 
@@ -311,10 +308,10 @@ thresholdsRouter.patch("/", async (req, res) => {
     res.json(threshold);
   } catch (error) {
     const stack = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("User PATCH error:", stack);
+    appLogger.error("Threshold PATCH error:", stack);
     res.status(500).send({
       error: error instanceof Error ? error.message : "unknown error",
-      message: "User PATCH error",
+      message: "Threshold PATCH error",
     });
   }
 });

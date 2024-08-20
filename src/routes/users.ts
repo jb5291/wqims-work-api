@@ -4,8 +4,11 @@ import { IEditFeatureResult } from "@esri/arcgis-rest-feature-service";
 import { appLogger } from "../util/appLogger";
 import graphHelper from "../util/graph";
 import { WqimsUser } from "../models/WqimsUser";
+import { logRequest, verifyAndRefreshToken } from "./auth";
+import cookieParser from "cookie-parser";
 
 const usersRouter = express.Router();
+usersRouter.use(cookieParser());
 
 /**
  * @swagger
@@ -30,7 +33,7 @@ const usersRouter = express.Router();
  *          type: string
  *        RAPIDRESPONSETEAM:
  *           type: integer
- *        ALTPHONENUMBER:
+ *        SECONDARYPHONENUMBER:
  *           type: string
  *           nullable: true
  *        STARTTIME:
@@ -65,7 +68,7 @@ const usersRouter = express.Router();
  *          type: string
  *        RAPIDRESPONSETEAM:
  *           type: integer
- *        ALTPHONENUMBER:
+ *        SECONDARYPHONENUMBER:
  *           type: string
  *           nullable: true
  *        STARTTIME:
@@ -155,7 +158,7 @@ const usersRouter = express.Router();
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.get("/" /*, logRequest, verifyAndRefreshToken*/, async (req, res) => {
+usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const getUserResult = await WqimsUser.getActiveFeatures();
     res.json(getUserResult);
@@ -198,7 +201,7 @@ usersRouter.get("/" /*, logRequest, verifyAndRefreshToken*/, async (req, res) =>
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.put("/", async (req, res) => {
+usersRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const user = new WqimsUser(req.body);
 
@@ -252,8 +255,7 @@ usersRouter.put("/", async (req, res) => {
  *              example: 'Internal Server Error'
  */
 usersRouter.post(
-  "/",
-  /*, logRequest, verifyAndRefreshToken*/ async (req, res) => {
+  "/", verifyAndRefreshToken, logRequest, async (req, res) => {
     try {
       const user: WqimsUser = new WqimsUser(req.body);
 
@@ -305,7 +307,7 @@ usersRouter.post(
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.patch("/", async (req, res) => {
+usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const user: WqimsUser = new WqimsUser(req.body);
 

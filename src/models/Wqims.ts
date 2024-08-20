@@ -18,7 +18,7 @@ class WqimsObject {
 
   constructor(OBJECTID: number | undefined, ACTIVE: number | undefined) {
     if (!ACTIVE) {
-      ACTIVE = 0;
+      ACTIVE = 1;
     }
     this.OBJECTID = OBJECTID;
     this.ACTIVE = ACTIVE;

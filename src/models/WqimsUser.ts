@@ -11,6 +11,7 @@ import {
 import { authConfig } from "../util/secrets";
 import { gisCredentialManager } from "../routes/auth";
 import { Request } from "express";
+import axios from "axios";
 
 type WqimsRole = {
   OBJECTID: number;
@@ -43,7 +44,7 @@ class WqimsUser extends WqimsObject {
   EMAIL: string;
   ROLE: string;
   RAPIDRESPONSETEAM: number;
-  ALTPHONENUMBER: string;
+  SECONDARYPHONENUMBER: string;
   STARTTIME: string;
   ENDTIME: string;
   GLOBALID: string | null;
@@ -60,7 +61,7 @@ class WqimsUser extends WqimsObject {
     EMAIL: string,
     ROLE: string,
     RAPIDRESPONSETEAM: number,
-    ALTPHONENUMBER: string,
+    SECONDARYPHONENUMBER: string,
     STARTTIME: string,
     ENDTIME: string,
     ACTIVE: number | undefined,
@@ -78,7 +79,7 @@ class WqimsUser extends WqimsObject {
     EMAIL?: string,
     ROLE?: string,
     RAPIDRESPONSETEAM?: number,
-    ALTPHONENUMBER?: string,
+    SECONDARYPHONENUMBER?: string,
     STARTTIME?: string,
     ENDTIME?: string,
     ACTIVE?: number | undefined,
@@ -95,7 +96,7 @@ class WqimsUser extends WqimsObject {
       this.EMAIL = body.EMAIL;
       this.ROLE = body.ROLE;
       this.RAPIDRESPONSETEAM = body.RAPIDRESPONSETEAM;
-      this.ALTPHONENUMBER = body.ALTPHONENUMBER;
+      this.SECONDARYPHONENUMBER = body.SECONDARYPHONENUMBER;
       this.STARTTIME = body.STARTTIME;
       this.ENDTIME = body.ENDTIME;
       this.GLOBALID = body.GLOBALID;
@@ -109,7 +110,7 @@ class WqimsUser extends WqimsObject {
       this.EMAIL = !EMAIL ? "" : EMAIL;
       this.ROLE = !ROLE ? "" : ROLE;
       this.RAPIDRESPONSETEAM = !RAPIDRESPONSETEAM ? 0 : RAPIDRESPONSETEAM;
-      this.ALTPHONENUMBER = !ALTPHONENUMBER ? "" : ALTPHONENUMBER;
+      this.SECONDARYPHONENUMBER = !SECONDARYPHONENUMBER ? "" : SECONDARYPHONENUMBER;
       this.STARTTIME = !STARTTIME ? "" : STARTTIME;
       this.ENDTIME = !ENDTIME ? "" : ENDTIME;
       this.GLOBALID = GLOBALID ? GLOBALID : null;
@@ -247,43 +248,68 @@ class WqimsUser extends WqimsObject {
     }
   }
 
-  /**
-     *
-     * Deletes a user from the relClassUrl relationship class table. Needs to first fetch
-     * the related records from the relationship class table for RID, then delete them.
-     *
-     * @param {string} relClassUrl - The URL of the relationship class table.
-     *
-     * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the delete operation.
-     * @throws {Error} If no related records are found in the related record group, or if errors
-     * are encountered on delete.
-     *
-    async deleteUserRelClassRecord(relClassUrl: string): Promise<IEditFeatureResult | undefined> {
-        const response = await queryFeatures({
-            url: relClassUrl,
-            where: `USER_ID='${this.GLOBALID}'`,
-            outFields: "*",
-            authentication: gisCredentialManager,
-        });
-        if ("features" in response && response.features.length > 0) {
-            const rids = response.features.map((feature: IFeature) => feature.attributes.RID);
-            if (!rids || !rids.length) throw new Error("No related records found in related record group.");
+  async addEverbridgeContact() {
+    const startHour = this.STARTTIME.includes('PM') ? parseInt(this.STARTTIME.split(':')[0]) + 12 : parseInt(this.STARTTIME.split(':')[0]);
+    const startMinute = parseInt(this.STARTTIME.split(':')[1].split(' ')[0]);
 
-            const deleteResponse = await deleteFeatures({
-                url: relClassUrl,
-                objectIds: rids,
-                authentication: gisCredentialManager,
-            });
+    const endHour = this.ENDTIME.includes('PM') ? parseInt(this.ENDTIME.split(':')[0]) + 12 : parseInt(this.ENDTIME.split(':')[0]);
+    const endMinute = parseInt(this.ENDTIME.split(':')[1].split(' ')[0]);
 
-            if (deleteResponse.deleteResults[0].success) {
-                return deleteResponse.deleteResults[0];
-            } else {
-                throw new Error(deleteResponse.deleteResults[0].error?.description);
-            }
-        } else {
-            return Promise.resolve({ objectId: this.OBJECTID as number, success: true });
-        }
-    }*/
+    // post options for adding an eb contact
+    // more info here: https://developers.everbridge.net/home/reference/ebs-create-contact
+    const options = {
+      method: 'POST',
+      headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          authorization: 'Basic ' + Buffer.from(`${authConfig.everbridge.username}:${authConfig.everbridge.password}`).toString('base64')
+      },
+      body: JSON.stringify({
+        firstName: this.NAME.split(' ')[0],
+          lastName: this.NAME.split(' ')[1],
+          recordTypeId: authConfig.everbridge.record_id,
+          groupsName: [
+              'GIS-TEST-Water-Quality-Alerts'
+          ],
+          externalId: this.GLOBALID,
+          paths: [
+              {
+                  waitTime: 0,
+                  pathId: authConfig.everbridge.sms_id,
+                  countryCode: 'US',
+                  value: !this.PHONENUMBER || this.PHONENUMBER === '' ? this.SECONDARYPHONENUMBER.replace(/\-/g, '') : this.PHONENUMBER.replace(/\-/g,''),
+                  quietTimeFrames: [ // would depend on hours of operation
+                      {name: 'Hours of Operation M-F', days: [1,2,3,4,5], fromHour: endHour, fromMin: endMinute, toHour: startHour, toMin: startMinute},
+                  ]
+              },
+              {
+                  waitTime: 0,
+                  pathId: authConfig.everbridge.email_id,
+                  countryCode: 'US',
+                  value: this.EMAIL,
+              }
+          ],
+          timezoneId: 'America/New_York'
+      })
+    }
+
+    axios.post(`${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}`, options)
+    .then((response) => {
+      console.log(response.data);
+    })
+    .catch((error) => {
+      console.error(error);
+    });
+  }
+
+  async deleteEverbridgeContact() {
+    const options = {
+      method: 'DELETE',
+      headers: {
+        
+      }
+    }
+  }
 }
 
 export { WqimsUser };

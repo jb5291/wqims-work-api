@@ -97,6 +97,7 @@ export const authConfig = {
     sms_id: get_env_val("EB_WQIMS_DP_SMS_ID"),
     email_id: get_env_val("EB_WQIMS_DP_EMAIL_ID"),
     record_id: get_env_val("EB_WQIMS_RECORD_ID"),
+    rest_url: "https://api.everbridge.net/rest"
   },
   jwt_secret_key: get_env_val("JWT_SECRET_KEY"),
 };

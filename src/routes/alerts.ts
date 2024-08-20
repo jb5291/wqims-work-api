@@ -4,7 +4,8 @@ import cookieParser from "cookie-parser";
 import jwt from "jsonwebtoken";
 
 import { appLogger } from "../util/appLogger";
-import { checkToken } from "./auth";
+import { checkToken, logRequest, verifyAndRefreshToken } from "./auth";
+import { WqimsAlert } from "../models/WqimsAlerts";
 
 const alertsRouter = express.Router();
 
@@ -24,39 +25,170 @@ alertsRouter.use(cookieParser());
  *          type: string
  *        LOCATION:
  *          type: string
+ *        LOCCODE:
+ *          type: string
  *        COLLECTDATE:
- *          type: date
+ *          type: number
  *        SAMPLECOLLECTOR:
  *          type: string
  *        ACODE:
  *          type: string
+ *        ANALYTE:
+ *          type: string
  *        ANALYSEDDATE:
- *          type: date
+ *          type: number
  *        ANALYSEDBY:
  *          type: string
- *        ADDR1:
- *          type: string
- *        ADDR5:
+ *        DATEVALIDATED:
+ *          type: number
+ *        VALIDATEDBY:
  *          type: string
  *        GEOCODEMATCHEDADDRESS:
  *          type: string
  *        RESULT:
  *          type: string
- *        LOCOCODE:
- *          type: string
  *        WARNING_STATUS:
  *          type: string
- *        ANALYTE:
+ *        SYSTEM:
  *          type: string
+ *        STATUS:
+ *          type: string
+ *        COMMENTS:
+ *          type: string
+ *        ACK_TIME:
+ *          type: number
+ *        ACK_BY:
+ *          type: string
+ *        CLOSED_TIME:
+ *          type: number
+ *        CLOSED_BY:
+ *          type: string
+ *        THRESHOLD_ID:
+ *          type: string
+ *    ArcGISEditFeatureResponse:
+ *      type: object
+ *      properties:
+ *        addResults:
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              objectId:
+ *                type: number
+ *              globalId:
+ *                type: string
+ *              success:
+ *                type: boolean
+ *              error:
+ *                type: object
+ *                properties:
+ *                  code:
+ *                    type: number
+ *                  description:
+ *                    type: string
+ *    ArcGISGetAlertsResponse:
+ *      type: object
+ *      properties:
+ *        objectIdFieldName:
+ *          type: string
+ *        globalIdFieldName:
+ *          type: string
+ *        hasZ:
+ *          type: boolean
+ *        hasM:
+ *          type: boolean
+ *        fields:
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              name:
+ *                type: string
+ *              alias:
+ *                type: string
+ *              type:
+ *                type: string
+ *              length:
+ *                type: number
+ *        features:
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              attributes:
+ *                type: schema
+ *                $ref: '#/components/schemas/AlertData'
  */
-alertsRouter.get("/", async (req, res) => {
+
+/**
+ * @swagger
+ * /alerts:
+ *  get:
+ *    summary: Get list of alerts per user
+ *    description: Gets a list of alerts for user
+ *    tags:
+ *      - Alerts
+ *    responses:
+ *      '200':
+ *        description: A list of alerts
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/ArcGISGetAlertsResponse'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+alertsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
-    const userId = checkToken(req);
+    const userId = await checkToken(req) as string;
 
-    if (userId === null) {
-      return res.status(401).send("Unauthorized");
-    }
+    const userAlerts = await WqimsAlert.getUserAlerts(parseInt(userId));
 
+    res.json(userAlerts);
+  } catch (error) {
+    const stack = error instanceof Error ? error.stack : "unknown error";
+    appLogger.error("Alerts GET Error:", stack);
+    res.status(500).send({
+      error: error instanceof Error ? error.message : "unknown error",
+      message: "Alerts GET error",
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /alerts/all:
+ *  get:
+ *    summary: Get list of all alerts
+ *    description: Gets a list of all alerts
+ *    tags:
+ *      - Alerts
+ *    responses:
+ *      '200':
+ *        description: A list of all alerts
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/ArcGISGetAlertsResponse'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+alertsRouter.get("/all", verifyAndRefreshToken, logRequest, async (req, res) => {
+  try {
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+    const allAlertsResponse = await WqimsAlert.getActiveFeatures();
+
+    res.json(allAlertsResponse)
   } catch (error) {
     const stack = error instanceof Error ? error.stack : "unknown error";
     appLogger.error("User PUT Error:", stack);
@@ -67,12 +199,59 @@ alertsRouter.get("/", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /alerts/acknowledge:
+ *  get:
+ *    summary: Update alert status
+ *    description: Updates an alert status to "Acknowledged" based on alert sent in body
+ *    tags:
+ *      - Alerts
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            $ref: '#/components/schemas/AlertData'
+ *    responses:
+ *      '200':
+ *        description: Alert Status changed successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/AlertsData'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+alertsRouter.post("/acknowledge", verifyAndRefreshToken, logRequest, async (req, res) => {
+  try {
+    const alert = new WqimsAlert(req.body);
+    const userId = await checkToken(req) as string;
+
+    const updateResult = await alert.acknowledgeAlert(parseInt(userId));
+
+    res.json(alert);
+  } catch (error) {
+    const stack = error instanceof Error ? error.stack : "unknown error";
+    appLogger.error("Alerts POST Error:", stack);
+    res.status(500).send({
+      error: error instanceof Error ? error.message : "unknown error",
+      message: "Alerts POST error",
+    });
+  }
+});
+
 //OracleDB.createPool(dbConf)
 //.then(pool => {
 //appLogger.info('connection pool created for alerts')
 
 /**
- * @swagger
+ * r
  * /alerts:
  *  get:
  *    summary: Get alerts assigned to user
@@ -127,7 +306,7 @@ alertsRouter.get("/", async (req, res) => {
   }); */
 
 /**
-   * @swagger
+   * 
    * /alerts/all:
    *  get:
    *    summary: Get all alerts
@@ -199,7 +378,7 @@ alertsRouter.get("/", async (req, res) => {
   })
 
 /** 
-  * @swagger
+  *
   * /alerts/status/{id}:
   *  post:
   *    summary: Update alert in limsalerts 
