@@ -4,7 +4,9 @@ import {
   deleteFeatures,
   IEditFeatureResult,
   IFeature,
+  IRelatedRecordGroup,
   queryFeatures,
+  queryRelated,
   updateFeatures,
 } from "@esri/arcgis-rest-feature-service";
 import { Request } from "express";
@@ -12,12 +14,14 @@ import { Request } from "express";
 import { gisCredentialManager } from "../routes/auth";
 import { authConfig } from "../util/secrets";
 import { appLogger } from "../util/appLogger";
+import { WqimsUser } from "./WqimsUser";
+import { WqimsThreshold } from "./WqimsThreshold";
 
 class WqimsGroup extends WqimsObject {
   GROUPNAME: string;
   GROUPID: string | null;
-  MEMBERIDS: string[];
-  THRESHOLDIDS: string[];
+  MEMBERS: WqimsUser[];
+  THRESHOLDS: WqimsThreshold[];
 
   /**
    * Constructs a new WqimsGroup instance.
@@ -32,8 +36,8 @@ class WqimsGroup extends WqimsObject {
    * @param {Request["body"]} body - The request body.
    * @param {string} GROUPNAME - The group name.
    * @param {number | undefined} ACTIVE - The active status.
-   * @param {string[]} MEMBERIDS - The member IDs.
-   * @param {string[]} THRESHOLDIDS - The threshold IDs.
+   * @param {WqimsUser[]} MEMBERS - group MEMBERS.
+   * @param {WqimsThreshold[]} THRESHOLDS - group thresholds.
    * @param {number | undefined} OBJECTID - The object ID.
    * @param {string | null} GROUPID - The group ID.
    */
@@ -41,8 +45,8 @@ class WqimsGroup extends WqimsObject {
     body: Request["body"] | null,
     GROUPNAME: string,
     ACTIVE: number | undefined,
-    MEMBERIDS: string[],
-    THRESHOLDIDS: string[],
+    MEMBERS: WqimsUser[],
+    THRESHOLDS: WqimsThreshold[],
     OBJECTID: number | undefined,
     GROUPID: string | null
   );
@@ -53,8 +57,8 @@ class WqimsGroup extends WqimsObject {
    * @param {Request["body"]} body - The request body.
    * @param {string} GROUPNAME - The group name.
    * @param {number | undefined} ACTIVE - The active status.
-   * @param {string[]} MEMBERIDS - The member IDs.
-   * @param {string[]} THRESHOLDIDS - The threshold IDs.
+   * @param {WqimsUser[]} MEMBERS - group MEMBERS.
+   * @param {WqimsThreshold[]} THRESHOLDS - group thresholds.
    * @param {number | undefined} OBJECTID - The object ID.
    * @param {string | null} GROUPID - The group ID.
    */
@@ -62,22 +66,22 @@ class WqimsGroup extends WqimsObject {
     body: Request["body"] | null,
     GROUPNAME?: string,
     ACTIVE?: number | undefined,
-    MEMBERIDS?: string[],
-    THRESHOLDIDS?: string[],
+    MEMBERS?: WqimsUser[],
+    THRESHOLDS?: WqimsThreshold[],
     OBJECTID?: number | undefined,
     GROUPID?: string | null
   ) {
     if (body) {
       super(body.OBJECTID, body.ACTIVE);
       this.GROUPNAME = body.GROUPNAME;
-      this.MEMBERIDS = body.MEMBERIDS ? body.MEMBERIDS : [];
-      this.THRESHOLDIDS = body.THRESHOLDIDS ? body.THRESHOLDIDS : [];
+      this.MEMBERS = body.MEMBERS ? body.MEMBERS : [];
+      this.THRESHOLDS = body.THRESHOLDS ? body.THRESHOLDS : [];
       this.GROUPID = body.GROUPID;
     } else {
       super(OBJECTID, ACTIVE);
       this.GROUPNAME = !GROUPNAME ? "" : GROUPNAME;
-      this.MEMBERIDS = !MEMBERIDS ? [] : MEMBERIDS;
-      this.THRESHOLDIDS = !THRESHOLDIDS ? [] : THRESHOLDIDS;
+      this.MEMBERS = !MEMBERS ? [] : MEMBERS;
+      this.THRESHOLDS = !THRESHOLDS ? [] : THRESHOLDS;
       this.GROUPID = !GROUPID ? null : GROUPID;
     }
   }
@@ -89,15 +93,15 @@ class WqimsGroup extends WqimsObject {
   /**
    * Assigns thresholds to a group.
    *
-   * @param {string[]} groupIds - The IDs of the groups.
+   * @param {string[]} GROUPIDs - The IDs of the groups.
    * @param {string} thresholdId - The ID of the threshold.
    * @returns {Promise<IEditFeatureResult>} The result of the add operation.
    */
-  static async assignThresholds(groupIds: string[], thresholdId: string): Promise<IEditFeatureResult> {
+  static async assignThresholds(GROUPIDs: string[], thresholdId: string): Promise<IEditFeatureResult> {
     const addGroupThresholdResult = await addFeatures({
       url: WqimsGroup.thresholdsRelationshipClassUrl,
       authentication: gisCredentialManager,
-      features: groupIds.map((id: string) => {
+      features: GROUPIDs.map((id: string) => {
         return {
           attributes: {
             GROUP_ID: id,
@@ -109,11 +113,11 @@ class WqimsGroup extends WqimsObject {
     return addGroupThresholdResult.addResults[0];
   }
 
-  static async assignMembers(groupIds: string[], userId: string): Promise<IEditFeatureResult> {
+  static async assignMembers(GROUPIDs: string[], userId: string): Promise<IEditFeatureResult> {
     const addGroupMemberResult = await addFeatures({
       url: WqimsGroup.usersRelationshipClassUrl,
       authentication: gisCredentialManager,
-      features: groupIds.map((id: string) => {
+      features: GROUPIDs.map((id: string) => {
         return {
           attributes: {
             GROUP_ID: id,
@@ -129,11 +133,11 @@ class WqimsGroup extends WqimsObject {
     const groups: WqimsGroup[] = await Promise.all(
       response.map(async (groupFeature: IFeature) => {
         const group = new WqimsGroup(groupFeature.attributes);
-        const getGroupMembers = await group.getGroupItems(WqimsGroup.usersRelationshipClassUrl);
-        const getGroupThresholds = await group.getGroupItems(WqimsGroup.thresholdsRelationshipClassUrl);
+        const getGroupMEMBERS = await group.getGroupItems(1); // user rel class id
+        const getGroupThresholds = await group.getGroupItems(2); // threshold rel class id
 
-        group.MEMBERIDS = getGroupMembers.map((member: IFeature) => member.attributes.USER_ID);
-        group.THRESHOLDIDS = getGroupThresholds.map((threshold: IFeature) => threshold.attributes.THRSHLD_ID);
+        group.MEMBERS = getGroupMEMBERS.length ? getGroupMEMBERS.map((member: IFeature) => new WqimsUser(member.attributes)) : [];
+        group.THRESHOLDS = getGroupThresholds.length ? getGroupThresholds.map((threshold: IFeature) => new WqimsThreshold(threshold.attributes)) : [];
 
         return group;
       })
@@ -151,7 +155,7 @@ class WqimsGroup extends WqimsObject {
   }
 
   /**
-   * Reactivates a feature by querying for inactive records and updating the active status.
+   * Reactivates a feature by queryi`ng for inactive records and updating the active status.
    *
    * @returns {Promise<IEditFeatureResult>} The result of the feature update operation.
    */
@@ -163,7 +167,7 @@ class WqimsGroup extends WqimsObject {
     });
 
     if ("features" in response && response.features.length > 0) {
-      this.GROUPID = response.features[0].attributes.GLOBALID;
+      this.groupId = response.features[0].attributes.GLOBALID;
     }
 
     return await this.reactivateFeature(response);
@@ -175,7 +179,7 @@ class WqimsGroup extends WqimsObject {
    * @returns {Promise<IEditFeatureResult>} The result of the update operation.
    */
   async updateFeature(): Promise<IEditFeatureResult> {
-    const { MEMBERIDS, THRESHOLDIDS, ...groupWithoutItems } = this;
+    const { MEMBERS, THRESHOLDS, ...groupWithoutItems } = this;
 
     const response = await updateFeatures({
       url: this.featureUrl,
@@ -193,7 +197,7 @@ class WqimsGroup extends WqimsObject {
    */
   async softDeleteFeature(): Promise<IEditFeatureResult> {
     this.ACTIVE = 0;
-    const { MEMBERIDS, THRESHOLDIDS, ...groupWithoutItems } = this;
+    const { MEMBERS, THRESHOLDS, ...groupWithoutItems } = this;
     const response = await updateFeatures({
       url: this.featureUrl,
       features: [{ attributes: groupWithoutItems }],
@@ -208,17 +212,17 @@ class WqimsGroup extends WqimsObject {
    * @param {string} relClassUrl - The relationship class URL.
    * @returns {Promise<IEditFeatureResult>} The result of the add operation.
    */
-  async addGroupItems(relClassUrl: string): Promise<IEditFeatureResult> {
+  async addGroupItems(relClassUrl: string, items: string[]): Promise<IEditFeatureResult> {
     switch (relClassUrl) {
       case WqimsGroup.thresholdsRelationshipClassUrl: {
         const addGroupThrshldResult = await addFeatures({
           url: relClassUrl,
           authentication: gisCredentialManager,
-          features: this.THRESHOLDIDS.map((id: string) => {
+          features: items.map((thresholdId: string) => {
             return {
               attributes: {
                 GROUP_ID: this.GROUPID,
-                THRSHLD_ID: id,
+                THRSHLD_ID: thresholdId,
               },
             };
           }),
@@ -230,11 +234,11 @@ class WqimsGroup extends WqimsObject {
         const addGroupUserResult = await addFeatures({
           url: relClassUrl,
           authentication: gisCredentialManager,
-          features: this.MEMBERIDS.map((id: string) => {
+          features: items.map((memberId: string) => {
             return {
               attributes: {
                 GROUP_ID: this.GROUPID,
-                USER_ID: id,
+                USER_ID: memberId,
               },
             };
           }),
@@ -253,10 +257,10 @@ class WqimsGroup extends WqimsObject {
    * @param {string} relClassUrl - The relationship class URL.
    * @returns {Promise<IEditFeatureResult>} The result of the delete operation.
    */
-  async deleteGroupItems(relClassUrl: string): Promise<IEditFeatureResult> {
+  async deleteGroupItems(relClassUrl: string, items: string[]): Promise<IEditFeatureResult> {
     const queryRelatedRecordsResult = await queryFeatures({
       url: relClassUrl,
-      where: `GROUP_ID='${this.GROUPID}'`,
+      where: `GROUP_ID='${this.GROUPID}' AND ${items[0]} IN ('${items.slice(1).join("','")}')`,
       returnIdsOnly: true,
       authentication: gisCredentialManager,
     });
@@ -293,17 +297,23 @@ class WqimsGroup extends WqimsObject {
    * @returns {Promise<IFeature[]>} The retrieved features.
    * @throws Will throw an error if the data retrieval fails.
    */
-  async getGroupItems(relClassUrl: string): Promise<IFeature[]> {
+  async getGroupItems(relationshipId: number): Promise<IFeature[]> {
     try {
-      const response = await queryFeatures({
-        url: relClassUrl,
-        where: `GROUP_ID='${this.GROUPID}'`,
+      const response = await queryRelated({
+        url: this.featureUrl,
+        objectIds: [this.objectId],
+        relationshipId: relationshipId,
         outFields: "*",
         authentication: gisCredentialManager,
       });
 
-      if ("features" in response) {
-        return response.features;
+      if(!("relatedRecordGroups" in response) || response.relatedRecordGroups.length === 0) {
+        return []; 
+      }
+      const relatedRecordGroup: IRelatedRecordGroup = response.relatedRecordGroups[0];
+      const relatedRecords: IFeature[] | undefined = relatedRecordGroup.relatedRecords;
+      if (relatedRecords) {
+        return relatedRecords
       } else {
         throw new Error("Error getting data");
       }

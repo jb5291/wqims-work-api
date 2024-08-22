@@ -2,7 +2,7 @@ import express from "express";
 import { IEditFeatureResult } from "@esri/arcgis-rest-feature-service";
 
 import { appLogger } from "../util/appLogger";
-import graphHelper from "../util/graph";
+import { default as graph } from "../util/graph";
 import { WqimsUser } from "../models/WqimsUser";
 import { logRequest, verifyAndRefreshToken } from "./auth";
 import cookieParser from "cookie-parser";
@@ -206,13 +206,14 @@ usersRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     const user = new WqimsUser(req.body);
 
     const updateResult = await user.checkInactive();
-    if (!updateResult.success) {
-      // true if user was reactivated
+    if (!updateResult.success) { // true if user was reactivated
       const userAddResult = await user.addFeature();
       if (!userAddResult?.success) throw new Error("Error adding user");
     }
     const userRoleEditResult = await user.updateUserRole();
     if (!userRoleEditResult?.success) throw new Error("Error updating user role");
+
+    await user.addEverbridgeContact();
 
     res.json(user);
   } catch (error) {
@@ -259,10 +260,13 @@ usersRouter.post(
     try {
       const user: WqimsUser = new WqimsUser(req.body);
 
+      // need to make phone number nullable on the table side
+      user.PHONENUMBER = user.PHONENUMBER ? user.PHONENUMBER : "none";
+
       const updateResult = await user.softDeleteFeature();
       if (updateResult.success) {
-        //await user.deleteUserRelClassRecord(WqimsUser.rolesRelationshipClassUrl);
-        //await user.deleteUserRelClassRecord(WqimsUser.groupsRelationshipClassUrl);
+        await user.deleteEverbridgeContact();
+
         res.json(updateResult);
       } else {
         throw new Error(updateResult.error?.description || "Error deactivating user");
@@ -320,6 +324,9 @@ usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     if (!roleResponse?.success) {
       throw new Error(roleResponse?.error?.description || "Error updating user role");
     }
+
+    await user.updateEverbridgeContact();
+    
     res.json(updateResult);
   } catch (error) {
     const stack = error instanceof Error ? error.stack : "unknown error";
@@ -334,7 +341,7 @@ usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
 usersRouter.use("/search", async (req, res) => {
   try {
     const searchQuery = req.query.filter as string;
-    const users = await graphHelper.getADUsers(searchQuery);
+    const users = await graph.getADUsers(searchQuery);
     res.send(users);
   } catch (error) {
     appLogger.error(error);

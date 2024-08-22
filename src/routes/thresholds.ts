@@ -251,11 +251,7 @@ thresholdsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) =
 
     const updateResult = await threshold.softDeleteFeature();
     if (!updateResult.success) throw new Error("Error deactivating threshold");
-
-    // "orphaned" records will persist, just made inactive
-    //const thresholdGroupEditResult = await threshold.deleteThresholdRelClassRecord(WqimsThreshold.groupsRelationshipClassUrl);
-    //if(thresholdGroupEditResult && !thresholdGroupEditResult.success) throw new Error("Error deleting threshold group record");
-
+    
     res.json(updateResult);
   } catch (error) {
     const stack = error instanceof Error ? error.stack : "unknown error";

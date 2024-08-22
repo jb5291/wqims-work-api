@@ -145,7 +145,7 @@ alertsRouter.use(cookieParser());
  */
 alertsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
-    const userId = await checkToken(req) as string;
+    const userId = await checkToken(req, res) as string;
 
     const userAlerts = await WqimsAlert.getUserAlerts(parseInt(userId));
 
@@ -231,7 +231,7 @@ alertsRouter.get("/all", verifyAndRefreshToken, logRequest, async (req, res) => 
 alertsRouter.post("/acknowledge", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const alert = new WqimsAlert(req.body);
-    const userId = await checkToken(req) as string;
+    const userId = await checkToken(req, res) as string;
 
     const updateResult = await alert.acknowledgeAlert(parseInt(userId));
 
@@ -526,7 +526,7 @@ function getAlerts(email: string, connection: Connection) {
                   FROM
                     ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} u
                   JOIN
-                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} ug ON u.GLOBALID = ug.USER_ID
+                    ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMEMBERSTbl} ug ON u.GLOBALID = ug.USER_ID
                   JOIN
                     ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpThrshldTbl} tg ON ug.GROUP_ID = tg.GROUP_ID
                   JOIN

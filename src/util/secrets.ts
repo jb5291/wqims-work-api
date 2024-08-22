@@ -49,7 +49,7 @@ export const WQIMS_DB_CONFIG = {
   connection_string: get_env_val("WQIMS_DB_TNS"),
   usersTbl: get_env_val("WQIMS_DB_USERS"),
   notificationGrpsTbl: get_env_val("WQIMS_DB_NOTIF_GRPS"),
-  notificationGrpMembersTbl: get_env_val("WQIMS_DB_NOTIF_GRP_MEMBERS"),
+  notificationGrpMEMBERSTbl: get_env_val("WQIMS_DB_NOTIF_GRP_MEMBERS"),
   notificationGrpThrshldTbl: get_env_val("WQIMS_DB_NOTIF_GRP_THRSHLD"),
   thresholdTbl: get_env_val("WQIMS_DB_THRSHLD"),
   alertsTbl: get_env_val("WQIMS_DB_ALERTS"),
@@ -100,6 +100,7 @@ export const authConfig = {
     rest_url: "https://api.everbridge.net/rest"
   },
   jwt_secret_key: get_env_val("JWT_SECRET_KEY"),
+  payload_secret_key: get_env_val("PAYLOAD_SECRET_KEY")
 };
 
 export const TLS_CERT_INFO = {

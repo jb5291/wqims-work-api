@@ -138,6 +138,9 @@ class WqimsUser extends WqimsObject {
       authentication: gisCredentialManager,
     });
 
+    // need to make phone number nullable on the table side
+    this.PHONENUMBER = this.PHONENUMBER ? this.PHONENUMBER : "none";
+    
     if ("features" in response && response.features.length > 0) {
       this.GLOBALID = response.features[0].attributes.GLOBALID;
     }
@@ -255,60 +258,140 @@ class WqimsUser extends WqimsObject {
     const endHour = this.ENDTIME.includes('PM') ? parseInt(this.ENDTIME.split(':')[0]) + 12 : parseInt(this.ENDTIME.split(':')[0]);
     const endMinute = parseInt(this.ENDTIME.split(':')[1].split(' ')[0]);
 
-    // post options for adding an eb contact
+    // options for adding an eb contact
     // more info here: https://developers.everbridge.net/home/reference/ebs-create-contact
     const options = {
       method: 'POST',
+      url: `${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}`,
       headers: {
-          accept: 'application/json',
-          'content-type': 'application/json',
-          authorization: 'Basic ' + Buffer.from(`${authConfig.everbridge.username}:${authConfig.everbridge.password}`).toString('base64')
+        accept: 'application/json',
+        'content-type': 'application/json',
+        authorization: 'Basic ' + Buffer.from(`${authConfig.everbridge.username}:${authConfig.everbridge.password}`).toString('base64')
       },
-      body: JSON.stringify({
-        firstName: this.NAME.split(' ')[0],
-          lastName: this.NAME.split(' ')[1],
-          recordTypeId: authConfig.everbridge.record_id,
-          groupsName: [
-              'GIS-TEST-Water-Quality-Alerts'
-          ],
-          externalId: this.GLOBALID,
-          paths: [
+      data: {
+        firstName: this.NAME.split(" ")[0],
+        lastName: this.NAME.split(" ")[1],
+        recordTypeId: parseInt(authConfig.everbridge.record_id),
+        groupsName: ["GIS-TEST-Water-Quality-Alerts"],
+        externalId: this.GLOBALID ? this.GLOBALID : "",
+        paths: [
+          {
+            waitTime: 0,
+            pathId: parseInt(authConfig.everbridge.sms_id),
+            countryCode: "US",
+            value:
+              !this.PHONENUMBER || this.PHONENUMBER === "" || this.PHONENUMBER === "none"
+                ? this.SECONDARYPHONENUMBER.replace(/\-/g, "")
+                : this.PHONENUMBER.replace(/\-/g, ""),
+            quietTimeFrames: [
+              // would depend on hours of operation
               {
-                  waitTime: 0,
-                  pathId: authConfig.everbridge.sms_id,
-                  countryCode: 'US',
-                  value: !this.PHONENUMBER || this.PHONENUMBER === '' ? this.SECONDARYPHONENUMBER.replace(/\-/g, '') : this.PHONENUMBER.replace(/\-/g,''),
-                  quietTimeFrames: [ // would depend on hours of operation
-                      {name: 'Hours of Operation M-F', days: [1,2,3,4,5], fromHour: endHour, fromMin: endMinute, toHour: startHour, toMin: startMinute},
-                  ]
+                name: "Hours of Operation M-F",
+                days: [1, 2, 3, 4, 5],
+                fromHour: endHour,
+                fromMin: endMinute,
+                toHour: startHour,
+                toMin: startMinute,
               },
-              {
-                  waitTime: 0,
-                  pathId: authConfig.everbridge.email_id,
-                  countryCode: 'US',
-                  value: this.EMAIL,
-              }
-          ],
-          timezoneId: 'America/New_York'
-      })
-    }
+            ],
+          },
+          {
+            waitTime: 0,
+            pathId: parseInt(authConfig.everbridge.email_id),
+            countryCode: "US",
+            value: this.EMAIL,
+          },
+        ],
+        timezoneId: "America/New_York",
+      }
+    };
 
-    axios.post(`${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}`, options)
-    .then((response) => {
-      console.log(response.data);
-    })
-    .catch((error) => {
-      console.error(error);
-    });
+    axios.request(options)
+      .then(function (response) {
+        console.log(response.data)
+      })
+      .catch(function (error) {
+        console.error(error);
+      })
   }
 
   async deleteEverbridgeContact() {
     const options = {
+      url: `${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}/${this.GLOBALID}?idType=externalId`,
       method: 'DELETE',
       headers: {
-        
-      }
+        accept: 'application/json',
+        authorization: 'Basic ' + Buffer.from(`${authConfig.everbridge.username}:${authConfig.everbridge.password}`).toString('base64')
+      },
     }
+
+    axios.request(options)
+      .then(function (response) {
+        console.log(response.data)
+      })
+      .catch(function (error) {
+        console.error(error);
+      })
+  }
+
+  async updateEverbridgeContact() {
+    const startHour = this.STARTTIME.includes('PM') ? parseInt(this.STARTTIME.split(':')[0]) + 12 : parseInt(this.STARTTIME.split(':')[0]);
+    const startMinute = parseInt(this.STARTTIME.split(':')[1].split(' ')[0]);
+
+    const endHour = this.ENDTIME.includes('PM') ? parseInt(this.ENDTIME.split(':')[0]) + 12 : parseInt(this.ENDTIME.split(':')[0]);
+    const endMinute = parseInt(this.ENDTIME.split(':')[1].split(' ')[0]);
+
+    const options = {
+      method: 'PUT',
+      url: `${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}/${this.GLOBALID}?idType=externalId`,
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        authorization: 'Basic ' + Buffer.from(`${authConfig.everbridge.username}:${authConfig.everbridge.password}`).toString('base64')
+      },
+      data: {
+        firstName: this.NAME.split(" ")[0],
+        lastName: this.NAME.split(" ")[1],
+        recordTypeId: parseInt(authConfig.everbridge.record_id),
+        groupsName: ["GIS-TEST-Water-Quality-Alerts"],
+        paths: [
+          {
+            waitTime: 0,
+            pathId: parseInt(authConfig.everbridge.sms_id),
+            countryCode: "US",
+            value:
+              !this.PHONENUMBER || this.PHONENUMBER === ""
+                ? this.SECONDARYPHONENUMBER.replace(/\-/g, "")
+                : this.PHONENUMBER.replace(/\-/g, ""),
+            quietTimeFrames: [
+              {
+                name: "Hours of Operation M-F",
+                days: [1, 2, 3, 4, 5],
+                fromHour: endHour,
+                fromMin: endMinute,
+                toHour: startHour,
+                toMin: startMinute,
+              },
+            ],
+          },
+          {
+            waitTime: 0,
+            pathId: parseInt(authConfig.everbridge.email_id),
+            countryCode: "US",
+            value: this.EMAIL,
+          },
+        ],
+        timezoneId: "America/New_York",
+      }
+    };
+
+    axios.request(options)
+      .then(function (response) {
+        console.log(response.data)
+      })
+      .catch(function (error) {
+        console.error(error);
+      })
   }
 }
 

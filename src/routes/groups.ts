@@ -17,7 +17,7 @@ const groupsRouter = express.Router();
  *        thresholdId:
  *          type: string
  *          required: true
- *        groupIds:
+ *        GROUPIDs:
  *          type: array
  *          items:
  *            type: string
@@ -27,7 +27,7 @@ const groupsRouter = express.Router();
  *        memberId:
  *          type: string
  *          required: true
- *        groupIds:
+ *        GROUPIDs:
  *          type: array
  *          items:
  *            type: string
@@ -164,7 +164,22 @@ groupsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
 
     const groupData = groups.map((group: WqimsGroup) => {
       const { featureUrl, ...groupNoUrl } = group;
-      return groupNoUrl;
+
+      const updatedMEMBERS = group.MEMBERS.map((member) => {
+        const { featureUrl, ...memberNoUrl } = member;
+        return memberNoUrl;
+      });
+
+      const updatedThresholds = group.THRESHOLDS.map((threshold) => {
+        const { featureUrl, ...thresholdNoUrl } = threshold;
+        return thresholdNoUrl;
+      });
+      
+      return {
+        ...groupNoUrl,
+        MEMBERS: updatedMEMBERS,
+        THRESHOLDS: updatedThresholds,
+      };
     });
     res.json(groupData);
   } catch (error) {
@@ -208,25 +223,27 @@ groupsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  */
 groupsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
-    const group: WqimsGroup = new WqimsGroup(req.body);
+    const group: WqimsGroup = new WqimsGroup(req.body.group);
+    const membersToAdd = req.body.usersToAdd || [];
+    const thresholdsToAdd = req.body.thresholdsToAdd || [];
 
     const updateResult = await group.checkInactive();
     if (!updateResult.success) {
       const addResult = await group.addFeature();
       if (!addResult.success) throw new Error("Error adding group");
     }
-    if (group.MEMBERIDS.length) {
-      const membersAddResults = await group.addGroupItems(WqimsGroup.usersRelationshipClassUrl);
-      if (!membersAddResults.success) {
-        appLogger.warn("Group members not added:", membersAddResults.error);
-        group.MEMBERIDS = [];
+    if (membersToAdd.length) {
+      const MEMBERSAddResults = await group.addGroupItems(WqimsGroup.usersRelationshipClassUrl, membersToAdd);
+      if (!MEMBERSAddResults.success) {
+        appLogger.warn("Group MEMBERS not added:", MEMBERSAddResults.error);
+        group.MEMBERS = [];
       }
     }
-    if (group.THRESHOLDIDS.length) {
-      const thresholdsAddResults = await group.addGroupItems(WqimsGroup.thresholdsRelationshipClassUrl);
+    if (thresholdsToAdd.length) {
+      const thresholdsAddResults = await group.addGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, thresholdsToAdd);
       if (!thresholdsAddResults.success) {
         appLogger.warn("Group thresholds not added:", thresholdsAddResults.error);
-        group.THRESHOLDIDS = [];
+        group.THRESHOLDS = [];
       }
     }
     const { featureUrl, ...groupData } = group;
@@ -324,36 +341,43 @@ groupsRouter.post(
 groupsRouter.patch(
   "/", verifyAndRefreshToken, logRequest, async (req, res) => {
     try {
-      const group: WqimsGroup = new WqimsGroup(req.body);
+      const group: WqimsGroup = new WqimsGroup(req.body.group);
+      const usersToRemove = req.body.usersToRemove || [];
+      const usersToAdd = req.body.usersToAdd || [];
+      const thresholdsToRemove = req.body.thresholdsToRemove || [];
+      const thresholdsToAdd = req.body.thresholdsToAdd || [];
 
       const updateResult = await group.updateFeature();
       if (!updateResult.success) {
         throw new Error(updateResult.error?.description || "Error updating group");
       }
 
-      // by default all relationship rows are deleted from each relationship
-      const deleteGroupMembersResult = await group.deleteGroupItems(WqimsGroup.usersRelationshipClassUrl);
-      if (!deleteGroupMembersResult.success) {
-        throw new Error(deleteGroupMembersResult.error?.description);
+      if (usersToRemove.length > 1) {
+        const deleteGroupMEMBERSResult = await group.deleteGroupItems(WqimsGroup.usersRelationshipClassUrl, usersToRemove);
+        if (!deleteGroupMEMBERSResult.success) {
+          throw new Error(deleteGroupMEMBERSResult.error?.description);
+        }
       }
-      // if there are members, add them
-      if (group.MEMBERIDS.length) {
-        const addGroupMembersResult = await group.addGroupItems(WqimsGroup.usersRelationshipClassUrl);
-        if (!addGroupMembersResult.success) {
-          appLogger.warn("Group members not added:", addGroupMembersResult.error);
-          group.MEMBERIDS = [];
+      // if there are MEMBERS, add them
+      if (usersToAdd.length) {
+        const addGroupMEMBERSResult = await group.addGroupItems(WqimsGroup.usersRelationshipClassUrl, usersToAdd);
+        if (!addGroupMEMBERSResult.success) {
+          appLogger.warn("Group MEMBERS not added:", addGroupMEMBERSResult.error);
+          group.MEMBERS = [];
         }
       }
 
-      const deleteGroupThresholdsResult = await group.deleteGroupItems(WqimsGroup.thresholdsRelationshipClassUrl);
-      if (!deleteGroupThresholdsResult.success) {
-        throw new Error(deleteGroupThresholdsResult.error?.description);
+      if(thresholdsToRemove.length > 1) {
+        const deleteGroupThresholdsResult = await group.deleteGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, thresholdsToRemove);
+        if (!deleteGroupThresholdsResult.success) {
+          throw new Error(deleteGroupThresholdsResult.error?.description);
+        }
       }
-      if (group.THRESHOLDIDS.length) {
-        const addGroupThresholdsResult = await group.addGroupItems(WqimsGroup.thresholdsRelationshipClassUrl);
+      if (thresholdsToAdd.length) {
+        const addGroupThresholdsResult = await group.addGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, thresholdsToAdd);
         if (!addGroupThresholdsResult.success) {
           appLogger.warn("Group thresholds not added:", addGroupThresholdsResult.error);
-          group.THRESHOLDIDS = [];
+          group.THRESHOLDS = [];
         }
       }
       res.json(group);
@@ -400,7 +424,7 @@ groupsRouter.patch(
 groupsRouter.post(
   "/assignThreshold", verifyAndRefreshToken, logRequest, async (req, res) => {
     try {
-      const assignThresholdsResult = await WqimsGroup.assignThresholds(req.body.groupIds, req.body.thresholdId);
+      const assignThresholdsResult = await WqimsGroup.assignThresholds(req.body.GROUPIDs, req.body.thresholdId);
       if (!assignThresholdsResult.success) {
         throw new Error(assignThresholdsResult.error?.description || "Error assigning threshold");
       }
@@ -447,11 +471,11 @@ groupsRouter.post(
  */
 groupsRouter.post("/assignMember", verifyAndRefreshToken, logRequest, async (req, res) => {
     try {
-      const assignMembersResult = await WqimsGroup.assignMembers(req.body.groupIds, req.body.memberId);
-      if (!assignMembersResult.success) {
-        throw new Error(assignMembersResult.error?.description || "Error assigning threshold");
+      const assignMEMBERSResult = await WqimsGroup.assignMembers(req.body.GROUPIDs, req.body.memberId);
+      if (!assignMEMBERSResult.success) {
+        throw new Error(assignMEMBERSResult.error?.description || "Error assigning threshold");
       }
-      res.json(assignMembersResult);
+      res.json(assignMEMBERSResult);
     } catch (error) {
       const stack = error instanceof Error ? error.stack : "unknown error";
       appLogger.error("Group POST Error:", stack);
