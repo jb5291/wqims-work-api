@@ -13,35 +13,32 @@ import groupsRouter from "./routes/groups";
 import usersRouter from "./routes/users";
 import thresholdsRouter from "./routes/thresholds";
 import alertsRouter from "./routes/alerts";
-import checklistsRouter from "./routes/checklists";
+// import checklistsRouter from "./routes/checklists"; TODO
 import { authRouter } from "./routes/auth";
 
 const app = express();
 
-app.use(
-  cors({
-    origin: ALLOWED_ORIGINS,
-    credentials: true,
-  })
-);
+/**
+ * Middleware setup for the Express application.
+ */
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.set("query parser", function (str: string) {
-  return qs.parse(str);
-});
+app.set("query parser", (str: string) => qs.parse(str));
 app.use(cookieParser());
 app.set("port", PROXY_LISTEN_PORT || 3001);
 
+/**
+ * Route handlers for the application.
+ */
 app.use("/notificationGroups", groupsRouter);
 app.use("/users", usersRouter);
 app.use("/thresholds", thresholdsRouter);
 app.use("/alerts", alertsRouter);
-app.use("/checklists", checklistsRouter);
+// app.use("/checklists", checklistsRouter); TODO
 app.use("/auth", authRouter);
 
-/** Swagger UI */
-
-const options = {
+const swaggerOptions = {
   definition: {
     openapi: "3.0.0",
     info: {
@@ -53,37 +50,46 @@ const options = {
   apis: ["./dist/routes/*.js"],
 };
 
-const swaggerSpec = swaggerJSDoc(options);
+const swaggerSpec = swaggerJSDoc(swaggerOptions);
 
+/**
+ * Endpoint to serve the Swagger JSON documentation.
+ * @name /swagger.json
+ * @function
+ * @memberof module:routes
+ * @inner
+ * @param {Object} req - Express request object.
+ * @param {Object} res - Express response object.
+ */
 app.get("/swagger.json", (req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.send(swaggerSpec);
 });
 
+/**
+ * Middleware to serve the Swagger UI documentation.
+ */
 app.use("/api-docs", swaggerUI.serve, swaggerUI.setup(swaggerSpec));
 
-/** Swagger End */
+/**
+ * Starts the server with the given options.
+ * @param {https.ServerOptions|undefined} options - HTTPS server options or undefined for HTTP.
+ */
+const startServer = (options: https.ServerOptions | undefined) => {
+  const server = options ? https.createServer(options, app) : http.createServer(app);
+  server.listen(app.get("port"), "0.0.0.0", () => {
+    console.debug(`App is running at ${BASEURL}:${app.get("port")} in ${app.get("env")} mode\nAllowed Origins: ${ALLOWED_ORIGINS}`);
+  });
+};
 
+/**
+ * Conditionally starts the server with HTTPS or HTTP based on TLS certificate information.
+ */
 if (TLS_CERT_INFO && TLS_CERT_INFO.type && TLS_CERT_INFO.cert && TLS_CERT_INFO.key) {
-  let options;
-  if (TLS_CERT_INFO.type === "pfx") {
-    options = {
-      pfx: fs.readFileSync(TLS_CERT_INFO.cert),
-      passphrase: TLS_CERT_INFO.key,
-    };
-  } else {
-    options = {
-      key: fs.readFileSync(TLS_CERT_INFO.key),
-      cert: fs.readFileSync(TLS_CERT_INFO.cert),
-    };
-  }
-  https.createServer(options, app).listen(app.get("port"), "0.0.0.0");
-  console.debug(
-    `App is running at ${BASEURL}:${app.get("port")} in ${app.get("env")} mode\nAllowed Origins: ${ALLOWED_ORIGINS}`
-  );
+  const options = TLS_CERT_INFO.type === "pfx"
+      ? { pfx: fs.readFileSync(TLS_CERT_INFO.cert), passphrase: TLS_CERT_INFO.key }
+      : { key: fs.readFileSync(TLS_CERT_INFO.key), cert: fs.readFileSync(TLS_CERT_INFO.cert) };
+  startServer(options);
 } else {
-  http.createServer(app).listen(app.get("port"), "0.0.0.0");
-  console.debug(
-    `App is running at ${BASEURL}:${app.get("port")} in ${app.get("env")} mode\nAllowed Origins: ${ALLOWED_ORIGINS}`
-  );
+  startServer(undefined);
 }

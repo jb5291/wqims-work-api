@@ -1,6 +1,5 @@
 import express from "express";
 import { IEditFeatureResult } from "@esri/arcgis-rest-feature-service";
-
 import { appLogger } from "../util/appLogger";
 import { default as graph } from "../util/graph";
 import { WqimsUser } from "../models/WqimsUser";
@@ -14,125 +13,78 @@ usersRouter.use(cookieParser());
  * @swagger
  * components:
  *  schemas:
- *    AddUserData:
+ *    AddUserData: // Schema for adding a new user
  *      type: object
  *      properties:
- *        NAME:
- *          type: string
- *        DEPARTMENT:
- *          type: string
- *        POSITION:
- *          type: string
- *        DIVISION:
- *          type: string
- *        PHONENUMBER:
- *          type: string
- *        EMAIL:
- *          type: string
- *        ROLE:
- *          type: string
- *        RAPIDRESPONSETEAM:
- *           type: integer
- *        SECONDARYPHONENUMBER:
- *           type: string
- *           nullable: true
- *        STARTTIME:
- *           type: string
- *           nullable: true
- *        ENDTIME:
- *           type: string
- *           nullable: true
- *        ACTIVE:
- *           type: integer
- *           nullable: true
- *    UserData:
+ *        NAME: { type: string } // Name of the user
+ *        DEPARTMENT: { type: string } // Department of the user
+ *        POSITION: { type: string } // Position of the user
+ *        DIVISION: { type: string } // Division of the user
+ *        PHONENUMBER: { type: string } // Phone number of the user
+ *        EMAIL: { type: string } // Email address of the user
+ *        ROLE: { type: string } // Role of the user
+ *        RAPIDRESPONSETEAM: { type: integer } // Indicates if the user is part of the rapid response team
+ *        SECONDARYPHONENUMBER: { type: string, nullable: true } // Secondary phone number of the user
+ *        STARTTIME: { type: string, nullable: true } // Start time of the user's shift
+ *        ENDTIME: { type: string, nullable: true } // End time of the user's shift
+ *        ACTIVE: { type: integer, nullable: true } // Active status of the user
+ *    UserData: // Schema for user data
  *      type: object
  *      properties:
- *        OBJECTID:
- *          type: number
- *        GLOBALID:
- *          type: string
- *        NAME:
- *          type: string
- *        DEPARTMENT:
- *          type: string
- *        POSITION:
- *          type: string
- *        DIVISION:
- *          type: string
- *        PHONENUMBER:
- *          type: string
- *        EMAIL:
- *          type: string
- *        ROLE:
- *          type: string
- *        RAPIDRESPONSETEAM:
- *           type: integer
- *        SECONDARYPHONENUMBER:
- *           type: string
- *           nullable: true
- *        STARTTIME:
- *           type: string
- *           nullable: true
- *        ENDTIME:
- *           type: string
- *           nullable: true
- *        ACTIVE:
- *           type: integer
- *           nullable: true
- *    ArcGISEditFeatureResponse:
+ *        OBJECTID: { type: number } // Object ID of the user
+ *        GLOBALID: { type: string } // Global ID of the user
+ *        NAME: { type: string }
+ *        DEPARTMENT: { type: string }
+ *        POSITION: { type: string }
+ *        DIVISION: { type: string }
+ *        PHONENUMBER: { type: string }
+ *        EMAIL: { type: string }
+ *        ROLE: { type: string }
+ *        RAPIDRESPONSETEAM: { type: integer }
+ *        SECONDARYPHONENUMBER: { type: string, nullable: true }
+ *        STARTTIME: { type: string, nullable: true }
+ *        ENDTIME: { type: string, nullable: true }
+ *        ACTIVE: { type: integer, nullable: true }
+ *    ArcGISEditFeatureResponse: // Schema for the response of editing a feature in ArcGIS
  *      type: object
  *      properties:
- *        addResults:
+ *        addResults: // Array of results from adding a feature
  *          type: array
  *          items:
  *            type: object
  *            properties:
- *              objectId:
- *                type: number
- *              globalId:
- *                type: string
- *              success:
- *                type: boolean
+ *              objectId: { type: number } // Object ID of the added feature
+ *              globalId: { type: string } // Global ID of the added feature
+ *              success: { type: boolean } // Success status of the operation
  *              error:
  *                type: object
  *                properties:
- *                  code:
- *                    type: number
- *                  description:
- *                    type: string
- *    ArcGISGetUsersResponse:
+ *                  code: { type: number } // Error code
+ *                  description: { type: string } // Error description
+ *    ArcGISGetUsersResponse: // Schema for the response of getting users from ArcGIS
  *      type: object
  *      properties:
- *        objectIdFieldName:
- *          type: string
- *        globalIdFieldName:
- *          type: string
- *        hasZ:
- *          type: boolean
- *        hasM:
- *          type: boolean
- *        fields:
+ *        objectIdFieldName: { type: string } // Field name for the object ID
+ *        globalIdFieldName: { type: string } // Field name for the global ID
+ *        hasZ: { type: boolean } // Indicates if the response has Z values
+ *        hasM: { type: boolean } // Indicates if the response has M values
+ *        fields: // Array of field definitions
  *          type: array
  *          items:
  *            type: object
  *            properties:
- *              name:
- *                type: string
- *              alias:
- *                type: string
- *              type:
- *                type: string
- *              length:
- *                type: number
- *        features:
+ *              name: { type: string } // Name of the field
+ *              alias: { type: string } // Alias of the field
+ *              type: { type: string } // Data type of the field
+ *              length: { type: number } // Length of the field
+ *        features: // Array of features
  *          type: array
  *          items:
  *            type: object
  *            properties:
  *              attributes:
  *                type: schema
- *                ref: '#/components/schemas/UserData'
+ *                ref: '#/components/schemas/UserData' // Reference to UserData schema
  */
 
 /**
@@ -141,8 +93,7 @@ usersRouter.use(cookieParser());
  *  get:
  *    summary: Get list of active users
  *    description: Gets a list of groups from DSNGIST wqims.users
- *    tags:
- *      - Users
+ *    tags: [Users]
  *    responses:
  *      '200':
  *        description: A list of users
@@ -162,13 +113,14 @@ usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const getUserResult = await WqimsUser.getActiveFeatures();
     res.json(getUserResult);
-  } catch (error) {
-    const stack = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("User GET Error:", stack);
-    res.status(500).send({
-      error: error instanceof Error ? error.message : "unknown error",
-      message: "User GET error",
-    });
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+    }
   }
 });
 
@@ -178,8 +130,7 @@ usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  *  put:
  *    summary: Add a new user to users
  *    description: Adds a new user to users table
- *    tags:
- *      - Users
+ *    tags: [Users]
  *    requestBody:
  *      required: true
  *      content:
@@ -204,25 +155,23 @@ usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
 usersRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const user = new WqimsUser(req.body);
-
     const updateResult = await user.checkInactive();
-    if (!updateResult.success) { // true if user was reactivated
+    if (!updateResult.success) {
       const userAddResult = await user.addFeature();
       if (!userAddResult?.success) throw new Error("Error adding user");
     }
     const userRoleEditResult = await user.updateUserRole();
     if (!userRoleEditResult?.success) throw new Error("Error updating user role");
-
     await user.addEverbridgeContact();
-
     res.json(user);
-  } catch (error) {
-    const stack = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("User PUT Error:", stack);
-    res.status(500).send({
-      error: error instanceof Error ? error.message : "unknown error",
-      message: "User PUT error",
-    });
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+    }
   }
 });
 
@@ -232,8 +181,7 @@ usersRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  *  post:
  *    summary: Deactivates a user from users table
  *    description: Deactivates a user from users based on user provided in body
- *    tags:
- *      - Users
+ *    tags: [Users]
  *    requestBody:
  *      required: true
  *      content:
@@ -255,32 +203,27 @@ usersRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.post(
-  "/", verifyAndRefreshToken, logRequest, async (req, res) => {
-    try {
-      const user: WqimsUser = new WqimsUser(req.body);
-
-      // need to make phone number nullable on the table side
-      user.PHONENUMBER = user.PHONENUMBER ? user.PHONENUMBER : "none";
-
-      const updateResult = await user.softDeleteFeature();
-      if (updateResult.success) {
-        await user.deleteEverbridgeContact();
-
-        res.json(updateResult);
-      } else {
-        throw new Error(updateResult.error?.description || "Error deactivating user");
-      }
-    } catch (error) {
-      const stack = error instanceof Error ? error.stack : "unknown error";
-      appLogger.error("User POST error:", stack);
-      res.status(500).send({
-        error: error instanceof Error ? error.message : "unknown error",
-        message: "User POST error",
-      });
+usersRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+  try {
+    const user = new WqimsUser(req.body);
+    user.PHONENUMBER = user.PHONENUMBER || "none";
+    const updateResult = await user.softDeleteFeature();
+    if (updateResult.success) {
+      await user.deleteEverbridgeContact();
+      res.json(updateResult);
+    } else {
+      throw new Error(updateResult.error?.description || "Error deactivating user");
+    }
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
     }
   }
-);
+});
 
 /**
  * @swagger
@@ -288,8 +231,7 @@ usersRouter.post(
  *  patch:
  *    summary: Update a user in users table
  *    description: Updates a user in table based on the user provided in body
- *    tags:
- *      - Users
+ *    tags: [Users]
  *    requestBody:
  *      required: true
  *      content:
@@ -313,28 +255,21 @@ usersRouter.post(
  */
 usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
-    const user: WqimsUser = new WqimsUser(req.body);
-
-    const updateResult: IEditFeatureResult = await user.updateFeature();
-    if (!updateResult.success) {
-      throw new Error(updateResult.error?.description || "Error updating user");
-    }
-
+    const user = new WqimsUser(req.body);
+    const updateResult = await user.updateFeature();
+    if (!updateResult.success) throw new Error(updateResult.error?.description || "Error updating user");
     const roleResponse = await user.updateUserRole();
-    if (!roleResponse?.success) {
-      throw new Error(roleResponse?.error?.description || "Error updating user role");
-    }
-
+    if (!roleResponse?.success) throw new Error(roleResponse?.error?.description || "Error updating user role");
     await user.updateEverbridgeContact();
-    
     res.json(updateResult);
-  } catch (error) {
-    const stack = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("User PATCH error:", stack);
-    res.status(500).send({
-      error: error instanceof Error ? error.message : "unknown error",
-      message: "User PATCH error",
-    });
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+    }
   }
 });
 
@@ -343,9 +278,15 @@ usersRouter.use("/search", async (req, res) => {
     const searchQuery = req.query.filter as string;
     const users = await graph.getADUsers(searchQuery);
     res.send(users);
-  } catch (error) {
-    appLogger.error(error);
-    res.status(500).send({ error: error instanceof Error ? error.message : "Unknown error searching for users" });
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+    }
   }
 });
+
 export default usersRouter;

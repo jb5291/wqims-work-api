@@ -2,7 +2,7 @@ import { WqimsObject } from "./Wqims";
 import {
   addFeatures,
   IEditFeatureResult,
-  IFeature,
+  IFeature, IQueryFeaturesResponse,
   IRelatedRecordGroup,
   queryFeatures,
   queryRelated,
@@ -34,125 +34,102 @@ type WqimsRole = {
   GLOBALID: string;
 };
 
+/**
+ * Class representing a WqimsUser.
+ * @extends WqimsObject
+ */
 class WqimsUser extends WqimsObject {
-  body: Request["body"] | null;
-  NAME: string;
-  DEPARTMENT: string;
-  POSITION: string;
-  DIVISION: string;
-  PHONENUMBER: string;
-  EMAIL: string;
-  ROLE: string;
-  RAPIDRESPONSETEAM: number;
-  SECONDARYPHONENUMBER: string;
-  STARTTIME: string;
-  ENDTIME: string;
-  GLOBALID: string | null;
+  NAME!: string;
+  DEPARTMENT!: string;
+  POSITION!: string;
+  DIVISION!: string;
+  PHONENUMBER!: string;
+  EMAIL!: string;
+  ROLE!: string;
+  RAPIDRESPONSETEAM!: number;
+  SECONDARYPHONENUMBER!: string;
+  STARTTIME!: string;
+  ENDTIME!: string;
+  GLOBALID!: string | null;
 
-  constructor(body: Request["body"]);
-
-  constructor(
-    body: Request["body"] | null,
-    NAME: string,
-    DEPARTMENT: string,
-    POSITION: string,
-    DIVISION: string,
-    PHONENUMBER: string,
-    EMAIL: string,
-    ROLE: string,
-    RAPIDRESPONSETEAM: number,
-    SECONDARYPHONENUMBER: string,
-    STARTTIME: string,
-    ENDTIME: string,
-    ACTIVE: number | undefined,
-    GLOBALID: string | null,
-    OBJECTID: number | undefined
-  );
-
-  constructor(
-    body: Request["body"] | null,
-    NAME?: string,
-    DEPARTMENT?: string,
-    POSITION?: string,
-    DIVISION?: string,
-    PHONENUMBER?: string,
-    EMAIL?: string,
-    ROLE?: string,
-    RAPIDRESPONSETEAM?: number,
-    SECONDARYPHONENUMBER?: string,
-    STARTTIME?: string,
-    ENDTIME?: string,
-    ACTIVE?: number | undefined,
-    GLOBALID?: string | null,
-    OBJECTID?: number | undefined
-  ) {
-    if (body) {
-      super(body.OBJECTID, body.ACTIVE);
-      this.NAME = body.NAME;
-      this.DEPARTMENT = body.DEPARTMENT;
-      this.POSITION = body.POSITION;
-      this.DIVISION = body.DIVISION;
-      this.PHONENUMBER = body.PHONENUMBER;
-      this.EMAIL = body.EMAIL;
-      this.ROLE = body.ROLE;
-      this.RAPIDRESPONSETEAM = body.RAPIDRESPONSETEAM;
-      this.SECONDARYPHONENUMBER = body.SECONDARYPHONENUMBER;
-      this.STARTTIME = body.STARTTIME;
-      this.ENDTIME = body.ENDTIME;
-      this.GLOBALID = body.GLOBALID;
-    } else {
-      super(OBJECTID, ACTIVE);
-      this.NAME = !NAME ? "" : NAME;
-      this.DEPARTMENT = !DEPARTMENT ? "" : DEPARTMENT;
-      this.POSITION = !POSITION ? "" : POSITION;
-      this.DIVISION = !DIVISION ? "" : DIVISION;
-      this.PHONENUMBER = !PHONENUMBER ? "" : PHONENUMBER;
-      this.EMAIL = !EMAIL ? "" : EMAIL;
-      this.ROLE = !ROLE ? "" : ROLE;
-      this.RAPIDRESPONSETEAM = !RAPIDRESPONSETEAM ? 0 : RAPIDRESPONSETEAM;
-      this.SECONDARYPHONENUMBER = !SECONDARYPHONENUMBER ? "" : SECONDARYPHONENUMBER;
-      this.STARTTIME = !STARTTIME ? "" : STARTTIME;
-      this.ENDTIME = !ENDTIME ? "" : ENDTIME;
-      this.GLOBALID = GLOBALID ? GLOBALID : null;
+  /**
+   * Creates an instance of WqimsUser.
+   * @param body - The request body.
+   * @param args - Additional arguments.
+   */
+  constructor(body: Request["body"] | null, ...args: any[]) {
+    super(body?.OBJECTID, body?.ACTIVE);
+    Object.assign(this, body || {});
+    if (!body) {
+      [
+        this.NAME,
+        this.DEPARTMENT,
+        this.POSITION,
+        this.DIVISION,
+        this.PHONENUMBER,
+        this.EMAIL,
+        this.ROLE,
+        this.RAPIDRESPONSETEAM,
+        this.SECONDARYPHONENUMBER,
+        this.STARTTIME,
+        this.ENDTIME,
+        this.GLOBALID,
+      ] = args;
     }
   }
 
+  /**
+   * The URL of the feature service.
+   */
   static featureUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`;
+
+  /**
+   * The URL of the groups relationship class.
+   */
   static groupsRelationshipClassUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users_groups}`;
+
+  /**
+   * The URL of the roles relationship class.
+   */
   static rolesRelationshipClassUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users_roles}`;
+
+  /**
+   * The URL of the roles feature service.
+   */
   static rolesUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.roles}`;
 
+  /**
+   * Sets the global ID.
+   * @param value - The global ID.
+   */
   set globalId(value: string | null) {
     this.GLOBALID = value;
   }
 
   /**
    * Reactivates a feature by querying for inactive records and updating the active status.
-   *
-   * @returns {Promise<IEditFeatureResult>} The result of the feature update operation.
+   * @returns The result of the feature update operation.
    */
   async checkInactive(): Promise<IEditFeatureResult> {
     const response = await queryFeatures({
       url: this.featureUrl,
       where: `ACTIVE=0 AND EMAIL='${this.EMAIL}'`,
       authentication: gisCredentialManager,
-    });
+    }) as IQueryFeaturesResponse;
 
-    // need to make phone number nullable on the table side
-    this.PHONENUMBER = this.PHONENUMBER ? this.PHONENUMBER : "none";
-    
-    if ("features" in response && response.features.length > 0) {
+    this.PHONENUMBER = this.PHONENUMBER || "none";
+
+    if (response.features?.length) {
       this.GLOBALID = response.features[0].attributes.GLOBALID;
     }
 
-    return await this.reactivateFeature(response);
+    return this.reactivateFeature(response);
   }
 
   /**
    * Retrieves all roles from the roles feature service.
-   *
-   * @returns {Promise<WqimsRole[]>} A promise that resolves to an array of WqimsRole objects.
-   * @throws {Error} If no features are found in the response.
+   * @returns A promise that resolves to an array of WqimsRole objects.
+   * @throws Will throw if no features are found in the response.
    */
   async getRoleIds(): Promise<WqimsRole[]> {
     const response = await queryFeatures({
@@ -160,9 +137,9 @@ class WqimsUser extends WqimsObject {
       where: "1=1",
       outFields: "*",
       authentication: gisCredentialManager,
-    });
+    }) as IQueryFeaturesResponse;
 
-    if ("features" in response) {
+    if (response.features) {
       return response.features.map((feature: IFeature) => feature.attributes as WqimsRole);
     } else {
       throw new Error("No features found");
@@ -171,9 +148,8 @@ class WqimsUser extends WqimsObject {
 
   /**
    * Updates the role of a given user.
-   *
-   * @returns {Promise<IEditFeatureResult | undefined>} A promise that resolves to the result of the update operation.
-   * @throws {Error} If the role is invalid or if no related records are found.
+   * @returns A promise that resolves to the result of the update operation.
+   * @throws Will throw if the role is invalid or if no related records are found.
    */
   async updateUserRole(): Promise<IEditFeatureResult | undefined> {
     const objectId: number = this.OBJECTID || 0;
@@ -194,22 +170,19 @@ class WqimsUser extends WqimsObject {
     const relatedRecordGroup: IRelatedRecordGroup = response.relatedRecordGroups?.[0];
     const relatedRecord: IFeature | undefined = relatedRecordGroup?.relatedRecords?.[0];
 
-    // return early if no update is needed
     if (relatedRecord?.attributes.ROLE === this.ROLE.toLowerCase()) {
       return { objectId, success: true };
     }
 
-    // need the RID in the relationship class table
     const userRolesQueryResponse = await queryFeatures({
       url: WqimsUser.rolesRelationshipClassUrl,
       where: `USER_ID='${this.GLOBALID}'`,
       outFields: "*",
       authentication: gisCredentialManager,
-    });
+    }) as IQueryFeaturesResponse;
 
-    // update previous role if features exist
-    if ("features" in userRolesQueryResponse && userRolesQueryResponse.features.length > 0) {
-      const rid = userRolesQueryResponse.features?.[0]?.attributes.RID; // expect one
+    if (userRolesQueryResponse.features?.length) {
+      const rid = userRolesQueryResponse.features[0].attributes.RID;
       if (!rid) {
         return Promise.reject("No related records found in related record group.");
       }
@@ -231,7 +204,6 @@ class WqimsUser extends WqimsObject {
         return userRolesUpdateResponse.updateResults[0];
       }
     } else {
-      // create new role
       const roleAddResponse = await addFeatures({
         url: WqimsUser.rolesRelationshipClassUrl,
         authentication: gisCredentialManager,
@@ -251,15 +223,13 @@ class WqimsUser extends WqimsObject {
     }
   }
 
+  /**
+   * Adds a contact to Everbridge.
+   */
   async addEverbridgeContact() {
-    const startHour = this.STARTTIME.includes('PM') ? parseInt(this.STARTTIME.split(':')[0]) + 12 : parseInt(this.STARTTIME.split(':')[0]);
-    const startMinute = parseInt(this.STARTTIME.split(':')[1].split(' ')[0]);
+    const { hour: startHour, minute: startMinute } = parseTime(this.STARTTIME);
+    const { hour: endHour, minute: endMinute } = parseTime(this.ENDTIME);
 
-    const endHour = this.ENDTIME.includes('PM') ? parseInt(this.ENDTIME.split(':')[0]) + 12 : parseInt(this.ENDTIME.split(':')[0]);
-    const endMinute = parseInt(this.ENDTIME.split(':')[1].split(' ')[0]);
-
-    // options for adding an eb contact
-    // more info here: https://developers.everbridge.net/home/reference/ebs-create-contact
     const options = {
       method: 'POST',
       url: `${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}`,
@@ -273,18 +243,14 @@ class WqimsUser extends WqimsObject {
         lastName: this.NAME.split(" ")[1],
         recordTypeId: parseInt(authConfig.everbridge.record_id),
         groupsName: ["GIS-TEST-Water-Quality-Alerts"],
-        externalId: this.GLOBALID ? this.GLOBALID : "",
+        externalId: this.GLOBALID || "",
         paths: [
           {
             waitTime: 0,
             pathId: parseInt(authConfig.everbridge.sms_id),
             countryCode: "US",
-            value:
-              !this.PHONENUMBER || this.PHONENUMBER === "" || this.PHONENUMBER === "none"
-                ? this.SECONDARYPHONENUMBER.replace(/\-/g, "")
-                : this.PHONENUMBER.replace(/\-/g, ""),
+            value: (this.PHONENUMBER || this.SECONDARYPHONENUMBER).replace(/-/g, ""),
             quietTimeFrames: [
-              // would depend on hours of operation
               {
                 name: "Hours of Operation M-F",
                 days: [1, 2, 3, 4, 5],
@@ -307,14 +273,13 @@ class WqimsUser extends WqimsObject {
     };
 
     axios.request(options)
-      .then(function (response) {
-        console.log(response.data)
-      })
-      .catch(function (error) {
-        console.error(error);
-      })
+        .then(response => console.log(response.data))
+        .catch(error => console.error(error));
   }
 
+  /**
+   * Deletes a contact from Everbridge.
+   */
   async deleteEverbridgeContact() {
     const options = {
       url: `${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}/${this.GLOBALID}?idType=externalId`,
@@ -326,20 +291,16 @@ class WqimsUser extends WqimsObject {
     }
 
     axios.request(options)
-      .then(function (response) {
-        console.log(response.data)
-      })
-      .catch(function (error) {
-        console.error(error);
-      })
+        .then(response => console.log(response.data))
+        .catch(error => console.error(error));
   }
 
+  /**
+   * Updates a contact in Everbridge.
+   */
   async updateEverbridgeContact() {
-    const startHour = this.STARTTIME.includes('PM') ? parseInt(this.STARTTIME.split(':')[0]) + 12 : parseInt(this.STARTTIME.split(':')[0]);
-    const startMinute = parseInt(this.STARTTIME.split(':')[1].split(' ')[0]);
-
-    const endHour = this.ENDTIME.includes('PM') ? parseInt(this.ENDTIME.split(':')[0]) + 12 : parseInt(this.ENDTIME.split(':')[0]);
-    const endMinute = parseInt(this.ENDTIME.split(':')[1].split(' ')[0]);
+    const { hour: startHour, minute: startMinute } = parseTime(this.STARTTIME);
+    const { hour: endHour, minute: endMinute } = parseTime(this.ENDTIME);
 
     const options = {
       method: 'PUT',
@@ -359,10 +320,7 @@ class WqimsUser extends WqimsObject {
             waitTime: 0,
             pathId: parseInt(authConfig.everbridge.sms_id),
             countryCode: "US",
-            value:
-              !this.PHONENUMBER || this.PHONENUMBER === ""
-                ? this.SECONDARYPHONENUMBER.replace(/\-/g, "")
-                : this.PHONENUMBER.replace(/\-/g, ""),
+            value: (this.PHONENUMBER || this.SECONDARYPHONENUMBER).replace(/-/g, ""),
             quietTimeFrames: [
               {
                 name: "Hours of Operation M-F",
@@ -386,13 +344,22 @@ class WqimsUser extends WqimsObject {
     };
 
     axios.request(options)
-      .then(function (response) {
-        console.log(response.data)
-      })
-      .catch(function (error) {
-        console.error(error);
-      })
+        .then(response => console.log(response.data))
+        .catch(error => console.error(error));
   }
+}
+
+/**
+ * Parses a time string and converts it to 24-hour format.
+ * @param time - The time string to parse.
+ * @returns An object containing the hour and minute in 24-hour format.
+ */
+function parseTime(time: string): { hour: number, minute: number } {
+  const [timePart, period] = time.split(' ');
+  let [hour, minute] = timePart.split(':').map(Number);
+  if (period === 'PM' && hour < 12) hour += 12;
+  if (period === 'AM' && hour === 12) hour = 0;
+  return { hour, minute };
 }
 
 export { WqimsUser };

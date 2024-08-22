@@ -2,24 +2,18 @@
  * From https://github.com/AzureAD/microsoft-authentication-library-for-js
  * Making additions to handle token validation for ArcGIS
  */
-import { CryptoProvider, IdTokenClaims } from "@azure/msal-node";
+import { CryptoProvider} from "@azure/msal-node";
 import jwt from "jsonwebtoken";
 import jwksClient, { JwksClient } from "jwks-rsa";
 
 import { authConfig } from "./secrets";
-import { importSPKI, JWTPayload, jwtVerify } from "jose";
-
-type accessTokenClaims = IdTokenClaims & {
-    scp?: string[];
-};
-
+import { JWTPayload} from "jose";
 /**
  * Basic validation for the access token
  */
 class TokenValidator {
     authConfig: any;
 
-    private cryptoProvider: CryptoProvider;
     private keyClient: JwksClient;
 
     /**
@@ -28,7 +22,6 @@ class TokenValidator {
      */
     constructor() {
         this.authConfig = authConfig;
-        this.cryptoProvider = new CryptoProvider();
 
         this.keyClient = jwksClient({
             jwksUri: authConfig.msal.jwksUri_1,
@@ -100,18 +93,6 @@ class TokenValidator {
     }
 
     /**
-     * Validate the access token returned from ArcGIS
-     * @param {string} rawAccessToken
-     * @returns Promise<boolean>
-     */
-    //async validateArcGISToken(
-    //  rawAccessToken: string,
-    //  idTokenClaims: IdTokenClaims
-    //): Promise<boolean> {
-    //  return false;
-    //}
-
-    /**
      * Fetches signing keys from the openid-configuration endpoint
      * @param {Object} header: token header
      * @returns {Promise}
@@ -119,8 +100,6 @@ class TokenValidator {
     private async getSigningKeys(header: any): Promise<string> {
         return (await this.keyClient.getSigningKey(header.kid)).getPublicKey();
     }
-
-    // async getUserInfo()
 }
 
 export default TokenValidator;

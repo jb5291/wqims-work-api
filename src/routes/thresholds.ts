@@ -1,5 +1,4 @@
 import express from "express";
-
 import { appLogger } from "../util/appLogger";
 import { WqimsThreshold } from "../models/WqimsThreshold";
 import { logRequest, verifyAndRefreshToken } from "./auth";
@@ -10,121 +9,80 @@ const thresholdsRouter = express.Router();
  * @swagger
  * components:
  *  schemas:
- *    AddThresholdData:
+ *    AddThresholdData: // Schema for adding a new threshold
  *      type: object
  *      properties:
- *        LOCATION_CODE:
- *          type: string
- *        LOCATION_NAME:
- *          type: string
- *        PROJECT_NAME:
- *          type: string
- *        ANALYSIS:
- *          type: string
- *        ANALYTE:
- *          type: string
- *        UPPER_LOWER_SPECS:
- *          type: string
- *        SPECS_VALUE:
- *          type: number
- *        ACKTIMEOUT:
- *          type: number
- *        CLOSEOUTTIMEOUT:
- *          type: number
- *        TEMPLATE_ID:
- *          type: string
- *        SYSTEM:
- *          type: string
- *        ACTIVE:
- *          type: number
- *        UNIT:
- *          type: string
- *    ThresholdData:
+ *        LOCATION_CODE: { type: string } // Code of the location
+ *        LOCATION_NAME: { type: string } // Name of the location
+ *        PROJECT_NAME: { type: string } // Name of the project
+ *        ANALYSIS: { type: string } // Analysis code being measured
+ *        ANALYTE: { type: string } // Analyte being measured
+ *        UPPER_LOWER_SPECS: { type: string } // Specifications for upper and lower limits
+ *        SPECS_VALUE: { type: number } // Value of the specifications
+ *        ACKTIMEOUT: { type: number } // Acknowledgment timeout
+ *        CLOSEOUTTIMEOUT: { type: number } // Closeout timeout
+ *        TEMPLATE_ID: { type: string } // ID of the template
+ *        SYSTEM: { type: string } // System name
+ *        ACTIVE: { type: number } // Active status
+ *        UNIT: { type: string } // Unit of measurement
+ *    ThresholdData: // Schema for threshold data
  *      type: object
  *      properties:
- *        OBJECTID:
- *          type: number
- *        GLOBALID:
- *          type: string
- *        LOCATION_CODE:
- *          type: string
- *        LOCATION_NAME:
- *          type: string
- *        PROJECT_NAME:
- *          type: string
- *        ANALYSIS:
- *          type: string
- *        ANALYTE:
- *          type: string
- *        UPPER_LOWER_SPECS:
- *          type: string
- *        SPECS_VALUE:
- *          type: number
- *        ACKTIMEOUT:
- *          type: number
- *        CLOSEOUTTIMEOUT:
- *          type: number
- *        TEMPLATE_ID:
- *          type: string
- *        SYSTEM:
- *          type: string
- *        ACTIVE:
- *          type: number
- *        UNIT:
- *          type: string
- *    ArcGISEditFeatureResponse:
+ *        OBJECTID: { type: number }
+ *        GLOBALID: { type: string }
+ *        LOCATION_CODE: { type: string }
+ *        LOCATION_NAME: { type: string }
+ *        PROJECT_NAME: { type: string }
+ *        ANALYSIS: { type: string }
+ *        ANALYTE: { type: string }
+ *        UPPER_LOWER_SPECS: { type: string }
+ *        SPECS_VALUE: { type: number }
+ *        ACKTIMEOUT: { type: number }
+ *        CLOSEOUTTIMEOUT: { type: number }
+ *        TEMPLATE_ID: { type: string }
+ *        SYSTEM: { type: string }
+ *        ACTIVE: { type: number }
+ *        UNIT: { type: string }
+ *    ArcGISEditFeatureResponse: // Schema for the response of editing a feature in ArcGIS
  *      type: object
  *      properties:
- *        addResults:
+ *        addResults: // Array of results from adding a feature
  *          type: array
  *          items:
  *            type: object
  *            properties:
- *              objectId:
- *                type: number
- *              globalId:
- *                type: string
- *              success:
- *                type: boolean
+ *              objectId: { type: number } // Object ID of the added feature
+ *              globalId: { type: string } // Global ID of the added feature
+ *              success: { type: boolean } // Success status of the operation
  *              error:
  *                type: object
  *                properties:
- *                  code:
- *                    type: number
- *                  description:
- *                    type: string
- *    ArcGISGetThresholdsResponse:
+ *                  code: { type: number } // Error code
+ *                  description: { type: string } // Error description
+ *    ArcGISGetThresholdsResponse: // Schema for the response of getting thresholds from ArcGIS
  *      type: object
  *      properties:
- *        objectIdFieldName:
- *          type: string
- *        globalIdFieldName:
- *          type: string
- *        hasZ:
- *          type: boolean
- *        hasM:
- *          type: boolean
- *        fields:
+ *        objectIdFieldName: { type: string } // Field name for the object ID
+ *        globalIdFieldName: { type: string } // Field name for the global ID
+ *        hasZ: { type: boolean } // Indicates if the response has Z values
+ *        hasM: { type: boolean } // Indicates if the response has M values
+ *        fields: // Array of field definitions
  *          type: array
  *          items:
  *            type: object
  *            properties:
- *              name:
- *                type: string
- *              alias:
- *                type: string
- *              type:
- *                type: string
- *              length:
- *                type: number
- *        features:
+ *              name: { type: string } // Name of the field
+ *              alias: { type: string } // Alias of the field
+ *              type: { type: string } // Data type of the field
+ *              length: { type: number } // Length of the field
+ *        features: // Array of features
  *          type: array
  *          items:
  *            type: object
  *            properties:
  *              attributes:
  *                type: schema
- *                $ref: '#/components/schemas/ThresholdData'
+ *                $ref: '#/components/schemas/ThresholdData' // Reference to ThresholdData schema
  */
 
 /**
@@ -151,19 +109,19 @@ const thresholdsRouter = express.Router();
  *              example: 'Internal Server Error'
  */
 thresholdsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
-    try {
-      const getThresholdResult = await WqimsThreshold.getActiveFeatures();
-      res.json(getThresholdResult);
-    } catch (error) {
-      const stack = error instanceof Error ? error.stack : "unknown error";
-      appLogger.error("Threshold GET Error:", stack);
-      res.status(500).send({
-        error: error instanceof Error ? error.message : "unknown error",
-        message: "Threshold GET error",
-      });
+  try {
+    const getThresholdResult = await WqimsThreshold.getActiveFeatures();
+    res.json(getThresholdResult);
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
     }
   }
-);
+});
 
 /**
  * @swagger
@@ -195,33 +153,31 @@ thresholdsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) =>
  *              example: 'Internal Server Error'
  */
 thresholdsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
-    try {
-      const threshold: WqimsThreshold = new WqimsThreshold(req.body);
-
-      const updateResult = await threshold.checkInactive();
-      if (!updateResult.success) {
-        const thresholdAddResult = await threshold.addFeature();
-        if (!thresholdAddResult?.success) throw new Error(thresholdAddResult.error?.description);
-      }
-
-      res.json(threshold);
-    } catch (error) {
-      const stack = error instanceof Error ? error.stack : "unknown error";
-      appLogger.error("Threshold PUT Error:", stack);
-      res.status(500).send({
-        error: error instanceof Error ? error.message : "unknown error",
-        message: "Threshold PUT error",
-      });
+  try {
+    const threshold = new WqimsThreshold(req.body);
+    const updateResult = await threshold.checkInactive();
+    if (!updateResult.success) {
+      const thresholdAddResult = await threshold.addFeature();
+      if (!thresholdAddResult?.success) throw new Error(thresholdAddResult.error?.description);
+    }
+    res.json(threshold);
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
     }
   }
-);
+});
 
 /**
  * @swagger
  * /thresholds:
  *  post:
- *    summary: deactivates threshold from thresholds list
- *    description: deactivates a threshold
+ *    summary: Deactivates threshold from thresholds list
+ *    description: Deactivates a threshold
  *    tags:
  *      - Thresholds
  *    requestBody:
@@ -247,19 +203,18 @@ thresholdsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) =>
  */
 thresholdsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
-    const threshold: WqimsThreshold = new WqimsThreshold(req.body);
-
+    const threshold = new WqimsThreshold(req.body);
     const updateResult = await threshold.softDeleteFeature();
     if (!updateResult.success) throw new Error("Error deactivating threshold");
-    
     res.json(updateResult);
-  } catch (error) {
-    const stack = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("Threshold POST error:", stack);
-    res.status(500).send({
-      error: error instanceof Error ? error.message : "unknown error",
-      message: "Threshold POST error",
-    });
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+    }
   }
 });
 
@@ -294,21 +249,20 @@ thresholdsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) =
  */
 thresholdsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
-    const threshold: WqimsThreshold = new WqimsThreshold(req.body);
-
+    const threshold = new WqimsThreshold(req.body);
     const updateResult = await threshold.updateFeature();
     if (!updateResult?.success) {
       throw new Error(updateResult.error?.description || "Error updating threshold");
     }
-
     res.json(threshold);
-  } catch (error) {
-    const stack = error instanceof Error ? error.stack : "unknown error";
-    appLogger.error("Threshold PATCH error:", stack);
-    res.status(500).send({
-      error: error instanceof Error ? error.message : "unknown error",
-      message: "Threshold PATCH error",
-    });
+  } catch (error: unknown) {
+    if(error instanceof Error) {
+      appLogger.error("Group POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group POST error" });
+    } else {
+      appLogger.error("Group POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+    }
   }
 });
 

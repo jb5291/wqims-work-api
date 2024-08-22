@@ -11,22 +11,30 @@ import { gisCredentialManager } from "../routes/auth";
 import { appLogger } from "../util/appLogger";
 import { v4 as uuidv4 } from "uuid";
 
+/**
+ * Class representing a WqimsObject.
+ */
 class WqimsObject {
-  OBJECTID: number | undefined;
-  ACTIVE: number | undefined;
-  readonly featureUrl: string;
+  OBJECTID?: number;
+  ACTIVE?: number = 1;
+  static featureUrl: string;
+  readonly featureUrl: string = WqimsObject.featureUrl;
 
-  constructor(OBJECTID: number | undefined, ACTIVE: number | undefined) {
-    if (!ACTIVE) {
-      ACTIVE = 1;
-    }
+  /**
+   * Creates an instance of WqimsObject.
+   * @param OBJECTID - The object ID.
+   * @param ACTIVE - The active status.
+   */
+  constructor(OBJECTID?: number, ACTIVE?: number) {
     this.OBJECTID = OBJECTID;
-    this.ACTIVE = ACTIVE;
-    this.featureUrl = (this.constructor as typeof WqimsObject).featureUrl;
+    this.ACTIVE = ACTIVE ?? 1;
   }
 
-  static featureUrl: string;
-
+  /**
+   * Retrieves active features.
+   * @returns A promise that resolves to an array of active features.
+   * @throws Will throw an error if the query fails.
+   */
   static async getActiveFeatures(): Promise<IFeature[]> {
     try {
       const response = await queryFeatures({
@@ -35,48 +43,49 @@ class WqimsObject {
         outFields: "*",
         authentication: gisCredentialManager,
       });
-
-      if ("features" in response) {
-        return response.features;
-      } else {
-        throw new Error("Error getting data");
-      }
+      if ("features" in response) return response.features;
+      throw new Error("Error getting data");
     } catch (error) {
-      const stack: string | undefined = error instanceof Error ? error.stack : "unknown error";
-      appLogger.error("User GET Error:", stack);
-      throw {
-        error: error instanceof Error ? error.message : "unknown error",
-        message: "User GET error",
-      };
+      appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
     }
-  }
-
-  set active(value: number | undefined) {
-    this.ACTIVE = value;
-  }
-
-  set objectId(value: number | undefined) {
-    this.OBJECTID = value;
-  }
-
-  get objectId(): number {
-    return this.OBJECTID ? this.OBJECTID : 0;
   }
 
   /**
-   * Adds a feature.
-   * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the add operation.
+   * Sets the active status.
+   * @param value - The active status.
+   */
+  set active(value: number) {
+    this.ACTIVE = value ?? 0;
+  }
+
+  /**
+   * Sets the object ID.
+   * @param value - The object ID.
+   */
+  set objectId(value: number) {
+    this.OBJECTID = value ?? 0;
+  }
+
+  /**
+   * Gets the object ID.
+   * @returns The object ID.
+   */
+  get objectId(): number {
+    return this.OBJECTID ?? 0;
+  }
+
+  /**
+   * Adds a new feature.
+   * @returns A promise that resolves to the result of the add operation.
    */
   async addFeature(): Promise<IEditFeatureResult> {
-    if ("GLOBALID" in this) {
-      this.GLOBALID = `{${uuidv4().toUpperCase()}}`;
-    } else if ("GROUPID" in this) {
-      this.GROUPID = `{${uuidv4().toUpperCase()}}`;
-    }
+    if ("GLOBALID" in this) this.GLOBALID = `{${uuidv4().toUpperCase()}}`;
+    else if ("GROUPID" in this) this.GROUPID = `{${uuidv4().toUpperCase()}}`;
     this.ACTIVE = 1;
 
     const { OBJECTID, ...objectWithoutOID } = this;
-    const addResponse: { addResults: IEditFeatureResult[] } = await addFeatures({
+    const addResponse = await addFeatures({
       url: this.featureUrl,
       features: [{ attributes: objectWithoutOID }],
       authentication: gisCredentialManager,
@@ -87,38 +96,37 @@ class WqimsObject {
   }
 
   /**
-   * Updates a feature.
-   * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the update operation.
+   * Updates an existing feature.
+   * @returns A promise that resolves to the result of the update operation.
    */
   async updateFeature(): Promise<IEditFeatureResult> {
-    const response: { updateResults: IEditFeatureResult[] } = await updateFeatures({
+    const response = await updateFeatures({
       url: this.featureUrl,
       authentication: gisCredentialManager,
       features: [{ attributes: this }],
     });
-
-    return response.updateResults[0] as IEditFeatureResult;
+    return response.updateResults[0];
   }
 
   /**
-   * Soft deletes a feature.
-   * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the soft delete operation.
+   * Soft deletes a feature by setting its active status to 0.
+   * @returns A promise that resolves to the result of the soft delete operation.
    */
   async softDeleteFeature(): Promise<IEditFeatureResult> {
     this.ACTIVE = 0;
     const { featureUrl, ...objectWithoutUrl } = this;
-    const response: { updateResults: IEditFeatureResult[] } = await updateFeatures({
+    const response = await updateFeatures({
       url: this.featureUrl,
       features: [{ attributes: objectWithoutUrl }],
       authentication: gisCredentialManager,
     });
-    return response.updateResults[0] as IEditFeatureResult;
+    return response.updateResults[0];
   }
 
   /**
-   * Reactivates a feature. Should only be called by checkInactive.
-   * @param {IQueryFeaturesResponse | IQueryResponse} response - The response from the query.
-   * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the reactivation operation.
+   * Reactivates a feature if it exists in the response.
+   * @param response - The response from a query operation.
+   * @returns A promise that resolves to the result of the reactivation operation.
    */
   async reactivateFeature(response: IQueryFeaturesResponse | IQueryResponse): Promise<IEditFeatureResult> {
     if ("features" in response && response.features.length > 0) {
@@ -126,13 +134,13 @@ class WqimsObject {
       this.objectId = existingObject.OBJECTID;
       this.active = 1;
 
-      const updateResponse: { updateResults: IEditFeatureResult[] } = await updateFeatures({
+      const updateResponse = await updateFeatures({
         url: this.featureUrl,
         features: [{ attributes: this }],
         authentication: gisCredentialManager,
       });
 
-      return updateResponse.updateResults[0] as IEditFeatureResult;
+      return updateResponse.updateResults[0];
     } else {
       return { objectId: -1, success: false, error: { code: 999, description: "No inactive record found" } };
     }
