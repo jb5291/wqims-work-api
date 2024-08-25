@@ -148,7 +148,7 @@ alertsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const userId = await checkToken(req, res) as string;
     const userAlerts = await WqimsAlert.getUserAlerts(parseInt(userId));
-    res.json(userAlerts);
+    res.json(userAlerts.map((feature) => feature.attributes));  
   } catch (error) {
     appLogger.error("Alerts GET Error:", error instanceof Error ? error.stack : "unknown error");
     res.status(500).send({
@@ -184,22 +184,22 @@ alertsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
 alertsRouter.get("/all", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const allAlertsResponse = await WqimsAlert.getActiveFeatures();
-    res.json(allAlertsResponse);
+    res.json(allAlertsResponse.map((feature) => feature.attributes));
   } catch (error) {
-    appLogger.error("User PUT Error:", error instanceof Error ? error.stack : "unknown error");
+    appLogger.error("Alerts GET Error:", error instanceof Error ? error.stack : "unknown error");
     res.status(500).send({
       error: error instanceof Error ? error.message : "unknown error",
-      message: "User PUT error",
+      message: "Alerts GET error",
     });
   }
 });
 
 /**
  * @swagger
- * /alerts/acknowledge:
- *  get:
+ * /alerts/status:
+ *  post:
  *    summary: Update alert status
- *    description: Updates an alert status to "Acknowledged" based on alert sent in body
+ *    description: Updates an alert status  based on alert sent in body
  *    tags:
  *      - Alerts
  *    requestBody:
@@ -223,11 +223,11 @@ alertsRouter.get("/all", verifyAndRefreshToken, logRequest, async (req, res) => 
  *              type: string
  *              example: 'Internal Server Error'
  */
-alertsRouter.post("/acknowledge", verifyAndRefreshToken, logRequest, async (req, res) => {
+alertsRouter.post("/status", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const alert = new WqimsAlert(req.body);
     const userId = await checkToken(req, res) as string;
-    await alert.acknowledgeAlert(parseInt(userId));
+    await alert.updateStatus(parseInt(userId));
     res.json(alert);
   } catch (error) {
     appLogger.error("Alerts POST Error:", error instanceof Error ? error.stack : "unknown error");

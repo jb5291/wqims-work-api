@@ -79,6 +79,7 @@ class WqimsAlert extends WqimsObject {
         this.RESULT_ID,
       ] = args;
     }
+    this.featureUrl = WqimsAlert.featureUrl
   }
 
   /**
@@ -155,12 +156,12 @@ class WqimsAlert extends WqimsObject {
   }
 
   /**
-   * Acknowledges an alert for a specific user.
+   * Updates alert status for a specific user.
    * @param userId - The user ID.
-   * @returns A promise that resolves when the alert is acknowledged.
-   * @throws Will throw an error if the acknowledgment fails.
+   * @returns A promise that resolves when the alert status has been updated.
+   * @throws Will throw an error if the status update fails.
    */
-  async acknowledgeAlert(userId: number) {
+  async updateStatus(userId: number) {
     try {
       const userResponse = await queryFeatures({
         url: WqimsUser.featureUrl,
@@ -172,12 +173,25 @@ class WqimsAlert extends WqimsObject {
 
       if (!userResponse.features?.length) throw new Error("User not found");
 
-      Object.assign(this, {
-        ACK_TIME: Date.now(),
-        ACK_BY: userResponse.features[0].attributes.NAME,
-        STATUS: "Acknowledged",
-        ACTIVE: 1,
-      });
+      switch (this.STATUS.toLowerCase()) {
+        case "closed":
+          Object.assign(this, {
+            CLOSED_TIME: Date.now(),
+            CLOSED_BY: userResponse.features[0].attributes.NAME,
+            STATUS: "Closed",
+            // ACTIVE: 0,
+          });
+          break;
+        case "acknowledged":
+          Object.assign(this, {
+            ACK_TIME: Date.now(),
+            ACK_BY: userResponse.features[0].attributes.NAME,
+            STATUS: "Acknowledged",
+          });
+          break;
+        default:
+          throw new Error("Invalid status");
+      }
 
       return await this.updateFeature();
     } catch (error) {

@@ -115,11 +115,11 @@ usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     res.json(getUserResult);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("Users GET Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Users GET error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("Users GET Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Users GET error" });
     }
   }
 });
@@ -166,11 +166,11 @@ usersRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     res.json(user);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("User PUT Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "User PUT error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("User PUT Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "User PUT error" });
     }
   }
 });
@@ -207,20 +207,26 @@ usersRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const user = new WqimsUser(req.body);
     user.PHONENUMBER = user.PHONENUMBER || "none";
+    
     const updateResult = await user.softDeleteFeature();
-    if (updateResult.success) {
-      await user.deleteEverbridgeContact();
-      res.json(updateResult);
-    } else {
-      throw new Error(updateResult.error?.description || "Error deactivating user");
-    }
+    if(!updateResult.success) throw new Error(updateResult.error?.description || "Error deactivating user");
+
+    const deleteRoleResult = await user.removeRelationship(WqimsUser.rolesRelationshipClassUrl) as IEditFeatureResult;
+    if (!deleteRoleResult.success) throw new Error(deleteRoleResult.error?.description || "Error deleting user role");
+
+    const deleteGroupMembershipResult = await user.removeRelationship(WqimsUser.groupsRelationshipClassUrl) as IEditFeatureResult;
+    if (!deleteGroupMembershipResult.success) throw new Error(deleteGroupMembershipResult.error?.description || "Error deleting user");
+
+    await user.deleteEverbridgeContact();
+
+    res.json(updateResult);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("User POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "User POST error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("User POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "User POST error" });
     }
   }
 });
@@ -264,11 +270,11 @@ usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     res.json(updateResult);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("User PATCH Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "User PATCH error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("User PATCH Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "User PATCH error" });
     }
   }
 });
@@ -280,11 +286,11 @@ usersRouter.use("/search", async (req, res) => {
     res.send(users);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("User SEARCH Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "User SEARCH error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("User SEARCH Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "User SEARCH error" });
     }
   }
 });

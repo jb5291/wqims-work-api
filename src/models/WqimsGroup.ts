@@ -50,6 +50,8 @@ class WqimsGroup extends WqimsObject {
     this.MEMBERS = body?.MEMBERS ?? MEMBERS ?? [];
     this.THRESHOLDS = body?.THRESHOLDS ?? THRESHOLDS ?? [];
     this.GROUPID = body?.GROUPID ?? GROUPID ?? null;
+
+    this.featureUrl = WqimsGroup.featureUrl;
   }
 
   /**
@@ -119,7 +121,7 @@ class WqimsGroup extends WqimsObject {
    */
   async checkInactive(): Promise<IEditFeatureResult> {
     const response = await queryFeatures({ url: this.featureUrl, where: `ACTIVE=0 AND GROUPNAME='${this.GROUPNAME}'`, authentication: gisCredentialManager }) as IQueryFeaturesResponse;
-    if (response.features?.length) this.groupId = response.features[0].attributes.GLOBALID;
+    if (response.features?.length) this.groupId = response.features[0].attributes.GROUPID;
     return this.reactivateFeature(response);
   }
 
@@ -150,8 +152,9 @@ class WqimsGroup extends WqimsObject {
    * @param items - The items to add.
    * @returns A promise that resolves to the result of the add operation.
    */
-  async addGroupItems(relClassUrl: string, items: string[]): Promise<IEditFeatureResult> {
-    const features = items.map(id => ({ attributes: { GROUP_ID: this.GROUPID, [relClassUrl === WqimsGroup.thresholdsRelationshipClassUrl ? 'THRSHLD_ID' : 'USER_ID']: id } }));
+  async addGroupItems(relClassUrl: string, items: WqimsUser[] | WqimsThreshold[]): Promise<IEditFeatureResult> {
+    const ids = items.map(feature => feature.GLOBALID);
+    const features = ids.map(id => ({ attributes: { GROUP_ID: this.GROUPID, [relClassUrl === WqimsGroup.thresholdsRelationshipClassUrl ? 'THRSHLD_ID' : 'USER_ID']: id } }));
     const result = await addFeatures({ url: relClassUrl, authentication: gisCredentialManager, features });
     return result.addResults[0];
   }
@@ -162,8 +165,13 @@ class WqimsGroup extends WqimsObject {
    * @param items - The items to delete.
    * @returns A promise that resolves to the result of the delete operation.
    */
-  async deleteGroupItems(relClassUrl: string, items: string[]): Promise<IEditFeatureResult> {
-    const whereClause = `GROUP_ID='${this.GROUPID}' AND ${items[0]} IN ('${items.slice(1).join("','")}')`;
+  async deleteGroupItems(relClassUrl: string, items: (WqimsUser[] | WqimsThreshold[])): Promise<IEditFeatureResult> {
+    let whereClause: string;
+    if ('ANALYTE' in items[0]) {
+      whereClause = `GROUP_ID='${this.GROUPID}' AND THRSHLD_ID IN ('${items.map(feature=>feature.GLOBALID).join("','")}')`;
+    } else {
+      whereClause = `GROUP_ID='${this.GROUPID}' AND USER_ID IN ('${items.map(feature=>feature.GLOBALID).join("','")}')`;
+    }
     const queryResult = await queryFeatures({ url: relClassUrl, where: whereClause, returnIdsOnly: true, authentication: gisCredentialManager }) as IQueryResponse;
     if (queryResult.objectIds?.length) {
       const deleteResult = await deleteFeatures({ url: relClassUrl, objectIds: queryResult.objectIds, authentication: gisCredentialManager });

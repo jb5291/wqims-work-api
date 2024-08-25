@@ -1,0 +1,19 @@
+{
+  "source": {
+    "include": ["src/"],
+    "includePattern": "\\.ts$",
+    "excludePattern": "(node_modules/|docs/|dist/|test/)",
+    "exclude": ["src/test", "node_modules", "dist", "docs"]
+  },
+  "plugins": ["plugins/markdown"],
+  "opts": {
+    "destination": "./docs",
+    "recurse": true
+  },
+  "typescript": {
+    "moduleRoot": "./src",
+    "allowJs": false,
+    "checkJs": false,
+    "declaration": false
+  }
+}

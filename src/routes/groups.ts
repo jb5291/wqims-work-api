@@ -2,6 +2,8 @@ import express from "express";
 import { appLogger } from "../util/appLogger";
 import { WqimsGroup } from "../models/WqimsGroup";
 import { logRequest, verifyAndRefreshToken } from "./auth";
+import { WqimsUser } from "../models/WqimsUser";
+import { WqimsThreshold } from "../models/WqimsThreshold";
 
 const groupsRouter = express.Router();
 
@@ -122,11 +124,11 @@ groupsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     res.json(groupData);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("Group GET Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group GET error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("Group GET Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group GET error" });
     }
   }
 });
@@ -169,6 +171,7 @@ groupsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     if (!updateResult.success) {
       const addResult = await group.addFeature();
       if (!addResult.success) throw new Error("Error adding group");
+      group.GROUPID = addResult.globalId as string;
     }
 
     if (usersToAdd.length) {
@@ -177,6 +180,8 @@ groupsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
         appLogger.warn("Group MEMBERS not added:", MEMBERSAddResults.error);
         group.MEMBERS = [];
       }
+      const newMembers = usersToAdd.filter((user: WqimsUser) => !group.MEMBERS.some(member => member.GLOBALID === user.GLOBALID));
+      group.MEMBERS.push(...newMembers);
     }
 
     if (thresholdsToAdd.length) {
@@ -185,17 +190,19 @@ groupsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
         appLogger.warn("Group thresholds not added:", thresholdsAddResults.error);
         group.THRESHOLDS = [];
       }
+      const newThresholds = thresholdsToAdd.filter((threshold: WqimsThreshold) => !group.THRESHOLDS.some(groupThreshold => groupThreshold.GLOBALID === threshold.GLOBALID));
+      group.THRESHOLDS.push(...newThresholds);
     }
 
     const { featureUrl, ...groupData } = group;
     res.json(groupData);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("Group PUT Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group PUT error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("Group PUT Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group PUT error" });
     }
   }
 });
@@ -234,6 +241,12 @@ groupsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     const group = new WqimsGroup(req.body);
     const updateResult = await group.softDeleteFeature();
     if (!updateResult.success) throw new Error(updateResult.error?.description || "Error updating group active status.");
+
+    const deleteMembersResult = await group.deleteGroupItems(WqimsGroup.usersRelationshipClassUrl, group.MEMBERS);
+    if (!deleteMembersResult.success) throw new Error(deleteMembersResult.error?.description);
+
+    const deleteThresholdsResult = await group.deleteGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, group.THRESHOLDS);
+    if (!deleteThresholdsResult.success) throw new Error(deleteThresholdsResult.error?.description);
     res.json(group);
   } catch (error: unknown) {
     if(error instanceof Error) {
@@ -284,9 +297,10 @@ groupsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
     const updateResult = await group.updateFeature();
     if (!updateResult.success) throw new Error(updateResult.error?.description || "Error updating group");
 
-    if (usersToRemove.length > 1) {
+    if (usersToRemove.length) {
       const deleteGroupMEMBERSResult = await group.deleteGroupItems(WqimsGroup.usersRelationshipClassUrl, usersToRemove);
       if (!deleteGroupMEMBERSResult.success) throw new Error(deleteGroupMEMBERSResult.error?.description);
+      group.MEMBERS = group.MEMBERS.filter(({ GLOBALID }) => !usersToRemove.map((user: WqimsUser)=>user.GLOBALID).includes(GLOBALID));
     }
 
     if (usersToAdd.length) {
@@ -295,11 +309,14 @@ groupsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
         appLogger.warn("Group MEMBERS not added:", addGroupMEMBERSResult.error);
         group.MEMBERS = [];
       }
+      const newMembers = usersToAdd.filter((user: WqimsUser) => !group.MEMBERS.some(member => member.GLOBALID === user.GLOBALID));
+      group.MEMBERS.push(...newMembers);
     }
 
-    if (thresholdsToRemove.length > 1) {
+    if (thresholdsToRemove.length) {
       const deleteGroupThresholdsResult = await group.deleteGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, thresholdsToRemove);
       if (!deleteGroupThresholdsResult.success) throw new Error(deleteGroupThresholdsResult.error?.description);
+      group.THRESHOLDS = group.THRESHOLDS.filter(({ GLOBALID }) => !thresholdsToRemove.map((threshold: WqimsThreshold) => threshold.GLOBALID).includes(GLOBALID));
     }
 
     if (thresholdsToAdd.length) {
@@ -308,16 +325,20 @@ groupsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
         appLogger.warn("Group thresholds not added:", addGroupThresholdsResult.error);
         group.THRESHOLDS = [];
       }
+      const newThresholds = thresholdsToAdd.filter((threshold: WqimsThreshold) => !group.THRESHOLDS.some(groupThreshold => groupThreshold.GLOBALID === threshold.GLOBALID));
+      group.THRESHOLDS.push(...newThresholds);
     }
 
-    res.json(group);
+    const { featureUrl, ...groupData } = group;
+
+    res.json(groupData);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("Group PATCH Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Group PATCH error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("Group PATCH Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Group PATCH error" });
     }
   }
 });

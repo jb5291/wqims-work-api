@@ -121,18 +121,18 @@ if (!TLS_CERT_INFO.type || !TLS_CERT_INFO.cert || !TLS_CERT_INFO.key) {
 }
 
 // Email configuration
-const emailRecipients = process.env.EMAIL_RECIPIENTS;
+/* const emailRecipients = process.env.EMAIL_RECIPIENTS;
 const emailRecipientsList = emailRecipients ? emailRecipients.split(",") : [];
 if (emailRecipientsList.length < 1) {
     appLogger.error("Must define at least one EMAIL_RECIPIENTS");
     process.exit(1);
-}
+} */
 
-export const EMAIL_CONFIG = {
+/* export const EMAIL_CONFIG = {
     email_service_url: getEnvVal("EMAIL_SERVICE_URL"),
     email_from_address: getEnvVal("EMAIL_FROM_ADDR"),
     recipients: emailRecipientsList,
-};
+}; */
 
 // Test SMS configuration
 export const TEST_SMS_NUMBER = getEnvVal("TEST_SMS_NUMBER");

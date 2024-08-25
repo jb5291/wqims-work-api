@@ -5,6 +5,7 @@ import {
   deleteFeatures,
   IEditFeatureResult,
   IQueryFeaturesResponse,
+  IQueryResponse,
   queryFeatures,
   updateFeatures,
 } from "@esri/arcgis-rest-feature-service";
@@ -54,6 +55,8 @@ class WqimsThreshold extends WqimsObject {
         this.UNIT,
       ] = args;
     }
+
+    this.featureUrl = WqimsThreshold.featureUrl;
   }
 
   /**
@@ -90,6 +93,36 @@ class WqimsThreshold extends WqimsObject {
     }
 
     return this.reactivateFeature(response);
+  }
+
+  /**
+   * Removes relationship records from M2M tables
+   * @param relClassUrl relationship class url
+   * @returns 
+   */
+  async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult | undefined> {
+    const queryRelResponse = await queryFeatures({
+      url: relClassUrl,
+      where: `THRSHLD_ID='${this.GLOBALID}'`,
+      returnIdsOnly: true,
+      authentication: gisCredentialManager,
+    }) as IQueryResponse;
+
+    if (queryRelResponse.objectIds?.length) {
+      const deleteRelResponse = await deleteFeatures({
+        url: relClassUrl,
+        objectIds: queryRelResponse.objectIds,
+        authentication: gisCredentialManager,
+      });
+
+      if (deleteRelResponse.deleteResults[0].success) {
+        return deleteRelResponse.deleteResults[0];
+      } else {
+        return Promise.reject(deleteRelResponse.deleteResults[0]?.error?.description);
+      }
+    } else {
+      return { objectId: this.OBJECTID || 0, success: true };
+    }
   }
 }
 

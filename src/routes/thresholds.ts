@@ -2,6 +2,8 @@ import express from "express";
 import { appLogger } from "../util/appLogger";
 import { WqimsThreshold } from "../models/WqimsThreshold";
 import { logRequest, verifyAndRefreshToken } from "./auth";
+import { IFeature } from "@esri/arcgis-rest-request";
+import { IEditFeatureResult } from "@esri/arcgis-rest-feature-service";
 
 const thresholdsRouter = express.Router();
 
@@ -111,14 +113,14 @@ const thresholdsRouter = express.Router();
 thresholdsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const getThresholdResult = await WqimsThreshold.getActiveFeatures();
-    res.json(getThresholdResult);
+    res.json(getThresholdResult.map((feature: IFeature) => feature.attributes));
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("Threshold GET Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Threshold GET error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("Threshold GET Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Threshold GET error" });
     }
   }
 });
@@ -163,10 +165,10 @@ thresholdsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) =>
     res.json(threshold);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
+      appLogger.error("Threshold PUT Error:", error.stack);
       res.status(500).send({ error: error.message, message: "Group POST error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
+      appLogger.error("Threshold PUT Error:", "unknown error");
       res.status(500).send({ error: "unknown error", message: "Group POST error" });
     }
   }
@@ -204,16 +206,21 @@ thresholdsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) =>
 thresholdsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const threshold = new WqimsThreshold(req.body);
+
     const updateResult = await threshold.softDeleteFeature();
     if (!updateResult.success) throw new Error("Error deactivating threshold");
+
+    const deleteGroupMembershipResult = await threshold.removeRelationship(WqimsThreshold.groupsRelationshipClassUrl) as IEditFeatureResult;
+    if (!deleteGroupMembershipResult.success) throw new Error(deleteGroupMembershipResult.error?.description || "Error deleting group membership");
+
     res.json(updateResult);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("Threshold POST Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Threshold POST error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("Threshold POST Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Threshold POST error" });
     }
   }
 });
@@ -257,11 +264,11 @@ thresholdsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) 
     res.json(threshold);
   } catch (error: unknown) {
     if(error instanceof Error) {
-      appLogger.error("Group POST Error:", error.stack);
-      res.status(500).send({ error: error.message, message: "Group POST error" });
+      appLogger.error("Threshold PATCH Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Threshold PATCH error" });
     } else {
-      appLogger.error("Group POST Error:", "unknown error");
-      res.status(500).send({ error: "unknown error", message: "Group POST error" });
+      appLogger.error("Threshold PATCH Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Threshold PATCH error" });
     }
   }
 });

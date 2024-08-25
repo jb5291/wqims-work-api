@@ -18,7 +18,7 @@ class WqimsObject {
   OBJECTID?: number;
   ACTIVE?: number = 1;
   static featureUrl: string;
-  readonly featureUrl: string = WqimsObject.featureUrl;
+  featureUrl: string = WqimsObject.featureUrl;
 
   /**
    * Creates an instance of WqimsObject.

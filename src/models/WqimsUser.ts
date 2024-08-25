@@ -1,8 +1,10 @@
 import { WqimsObject } from "./Wqims";
 import {
   addFeatures,
+  deleteFeatures,
   IEditFeatureResult,
   IFeature, IQueryFeaturesResponse,
+  IQueryResponse,
   IRelatedRecordGroup,
   queryFeatures,
   queryRelated,
@@ -76,6 +78,7 @@ class WqimsUser extends WqimsObject {
         this.GLOBALID,
       ] = args;
     }
+    this.featureUrl = WqimsUser.featureUrl;
   }
 
   /**
@@ -224,11 +227,43 @@ class WqimsUser extends WqimsObject {
   }
 
   /**
+   * Removes relationship records from M2M tables
+   * @param relClassUrl relationship class url
+   * @returns 
+   */
+  async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult | undefined> {
+    const queryRelResponse = await queryFeatures({
+      url: relClassUrl,
+      where: `USER_ID='${this.GLOBALID}'`,
+      returnIdsOnly: true,
+      authentication: gisCredentialManager,
+    }) as IQueryResponse;
+
+    if (queryRelResponse.objectIds?.length) {
+      const deleteRelResponse = await deleteFeatures({
+        url: relClassUrl,
+        objectIds: queryRelResponse.objectIds,
+        authentication: gisCredentialManager,
+      });
+
+      if (deleteRelResponse.deleteResults[0].success) {
+        return deleteRelResponse.deleteResults[0];
+      } else {
+        return Promise.reject(deleteRelResponse.deleteResults[0]?.error?.description);
+      }
+    } else {
+      return { objectId: this.OBJECTID || 0, success: true };
+    }
+  }
+
+  /**
    * Adds a contact to Everbridge.
    */
   async addEverbridgeContact() {
     const { hour: startHour, minute: startMinute } = parseTime(this.STARTTIME);
     const { hour: endHour, minute: endMinute } = parseTime(this.ENDTIME);
+
+    this.PHONENUMBER = this.PHONENUMBER === "none" ? "" : this.PHONENUMBER;
 
     const options = {
       method: 'POST',
@@ -315,6 +350,7 @@ class WqimsUser extends WqimsObject {
         lastName: this.NAME.split(" ")[1],
         recordTypeId: parseInt(authConfig.everbridge.record_id),
         groupsName: ["GIS-TEST-Water-Quality-Alerts"],
+        externalId: this.GLOBALID || "",
         paths: [
           {
             waitTime: 0,
