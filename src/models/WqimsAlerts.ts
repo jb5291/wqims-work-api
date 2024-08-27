@@ -120,7 +120,7 @@ class WqimsAlert extends WqimsObject {
       url: WqimsUser.featureUrl,
       outFields: ["OBJECTID"],
       objectIds: [userId],
-      relationshipId: 1,
+      relationshipId: parseInt(authConfig.arcgis.layers.usergroups_rel_id),
       authentication: gisCredentialManager,
     });
 
@@ -132,7 +132,7 @@ class WqimsAlert extends WqimsObject {
       url: WqimsGroup.featureUrl,
       outFields: ["GLOBALID"],
       objectIds: groupObjectIds,
-      relationshipId: 2,
+      relationshipId: parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id),
       authentication: gisCredentialManager,
     });
 

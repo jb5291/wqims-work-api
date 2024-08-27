@@ -101,8 +101,8 @@ class WqimsGroup extends WqimsObject {
   static async assignItemsToGroup(response: IFeature[]): Promise<WqimsGroup[]> {
     return Promise.all(response.map(async groupFeature => {
       const group = new WqimsGroup(groupFeature.attributes);
-      group.MEMBERS = await group.getGroupItems(1).then(items => items.map(item => new WqimsUser(item.attributes)));
-      group.THRESHOLDS = await group.getGroupItems(2).then(items => items.map(item => new WqimsThreshold(item.attributes)));
+      group.MEMBERS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.usergroups_rel_id)).then(items => items.map(item => new WqimsUser(item.attributes)));
+      group.THRESHOLDS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id)).then(items => items.map(item => new WqimsThreshold(item.attributes)));
       return group;
     }));
   }

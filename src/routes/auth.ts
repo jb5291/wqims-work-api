@@ -216,7 +216,7 @@ function checkActionPermissions() {
         url: `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`,
         objectIds: [parseInt(userId)],
         outFields: ["*"],
-        relationshipId: 0,
+        relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
         authentication: gisCredentialManager,
       }) as IQueryRelatedResponse;
 

@@ -165,7 +165,7 @@ class WqimsUser extends WqimsObject {
       url: this.featureUrl,
       objectIds: [this.objectId],
       outFields: ["*"],
-      relationshipId: 0,
+      relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
       authentication: gisCredentialManager,
     });
 
