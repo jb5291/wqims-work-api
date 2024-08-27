@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: models/Wqims.ts</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: models/Wqims.ts</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import {
+  addFeatures,
+  IEditFeatureResult,
+  IFeature,
+  IQueryFeaturesResponse,
+  IQueryResponse,
+  queryFeatures,
+  updateFeatures,
+} from "@esri/arcgis-rest-feature-service";
+import { gisCredentialManager } from "../routes/auth";
+import { appLogger } from "../util/appLogger";
+import { v4 as uuidv4 } from "uuid";
+
+/**
+ * Class representing a WqimsObject.
+ */
+class WqimsObject {
+  OBJECTID?: number;
+  ACTIVE?: number = 1;
+  static featureUrl: string;
+  featureUrl: string = WqimsObject.featureUrl;
+
+  /**
+   * Creates an instance of WqimsObject.
+   * @param OBJECTID - The object ID.
+   * @param ACTIVE - The active status.
+   */
+  constructor(OBJECTID?: number, ACTIVE?: number) {
+    this.OBJECTID = OBJECTID;
+    this.ACTIVE = ACTIVE ?? 1;
+  }
+
+  /**
+   * Retrieves active features.
+   * @returns A promise that resolves to an array of active features.
+   * @throws Will throw an error if the query fails.
+   */
+  static async getActiveFeatures(): Promise&lt;IFeature[]> {
+    try {
+      const response = await queryFeatures({
+        url: this.featureUrl,
+        where: "ACTIVE=1",
+        outFields: "*",
+        authentication: gisCredentialManager,
+      });
+      if ("features" in response) return response.features;
+      throw new Error("Error getting data");
+    } catch (error) {
+      appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
+    }
+  }
+
+  /**
+   * Sets the active status.
+   * @param value - The active status.
+   */
+  set active(value: number) {
+    this.ACTIVE = value ?? 0;
+  }
+
+  /**
+   * Sets the object ID.
+   * @param value - The object ID.
+   */
+  set objectId(value: number) {
+    this.OBJECTID = value ?? 0;
+  }
+
+  /**
+   * Gets the object ID.
+   * @returns The object ID.
+   */
+  get objectId(): number {
+    return this.OBJECTID ?? 0;
+  }
+
+  /**
+   * Adds a new feature.
+   * @returns A promise that resolves to the result of the add operation.
+   */
+  async addFeature(): Promise&lt;IEditFeatureResult> {
+    if ("GLOBALID" in this) this.GLOBALID = `{${uuidv4().toUpperCase()}}`;
+    else if ("GROUPID" in this) this.GROUPID = `{${uuidv4().toUpperCase()}}`;
+    this.ACTIVE = 1;
+
+    const { OBJECTID, ...objectWithoutOID } = this;
+    const addResponse = await addFeatures({
+      url: this.featureUrl,
+      features: [{ attributes: objectWithoutOID }],
+      authentication: gisCredentialManager,
+    });
+
+    this.OBJECTID = addResponse.addResults[0].objectId;
+    return addResponse.addResults[0];
+  }
+
+  /**
+   * Updates an existing feature.
+   * @returns A promise that resolves to the result of the update operation.
+   */
+  async updateFeature(): Promise&lt;IEditFeatureResult> {
+    const response = await updateFeatures({
+      url: this.featureUrl,
+      authentication: gisCredentialManager,
+      features: [{ attributes: this }],
+    });
+    return response.updateResults[0];
+  }
+
+  /**
+   * Soft deletes a feature by setting its active status to 0.
+   * @returns A promise that resolves to the result of the soft delete operation.
+   */
+  async softDeleteFeature(): Promise&lt;IEditFeatureResult> {
+    this.ACTIVE = 0;
+    const { featureUrl, ...objectWithoutUrl } = this;
+    const response = await updateFeatures({
+      url: this.featureUrl,
+      features: [{ attributes: objectWithoutUrl }],
+      authentication: gisCredentialManager,
+    });
+    return response.updateResults[0];
+  }
+
+  /**
+   * Reactivates a feature if it exists in the response.
+   * @param response - The response from a query operation.
+   * @returns A promise that resolves to the result of the reactivation operation.
+   */
+  async reactivateFeature(response: IQueryFeaturesResponse | IQueryResponse): Promise&lt;IEditFeatureResult> {
+    if ("features" in response &amp;&amp; response.features.length > 0) {
+      const existingObject = response.features[0].attributes;
+      this.objectId = existingObject.OBJECTID;
+      this.active = 1;
+
+      const updateResponse = await updateFeatures({
+        url: this.featureUrl,
+        features: [{ attributes: this }],
+        authentication: gisCredentialManager,
+      });
+
+      return updateResponse.updateResults[0];
+    } else {
+      return { objectId: -1, success: false, error: { code: 999, description: "No inactive record found" } };
+    }
+  }
+}
+
+export { WqimsObject };</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="TokenValidator.html">TokenValidator</a></li><li><a href="TokenValidator_TokenValidator.html">TokenValidator</a></li><li><a href="WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsThreshold_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold_WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsUser.html">WqimsUser</a></li><li><a href="WqimsUser_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsUser_WqimsUser.html">WqimsUser</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actionLogFormat">actionLogFormat</a></li><li><a href="global.html#actionLogger">actionLogger</a></li><li><a href="global.html#appLogOptions">appLogOptions</a></li><li><a href="global.html#appLogger">appLogger</a></li><li><a href="global.html#authRouter">authRouter</a></li><li><a href="global.html#checkActionPermissions">checkActionPermissions</a></li><li><a href="global.html#checkToken">checkToken</a></li><li><a href="global.html#createJWT">createJWT</a></li><li><a href="global.html#decryptUserId">decryptUserId</a></li><li><a href="global.html#getDateLabel">getDateLabel</a></li><li><a href="global.html#getEnvVal">getEnvVal</a></li><li><a href="global.html#getTokenPayload">getTokenPayload</a></li><li><a href="global.html#getUserId">getUserId</a></li><li><a href="global.html#handleTokenError">handleTokenError</a></li><li><a href="global.html#logError">logError</a></li><li><a href="global.html#logRequest">logRequest</a></li><li><a href="global.html#parseEnvInt">parseEnvInt</a></li><li><a href="global.html#parseTime">parseTime</a></li><li><a href="global.html#refreshToken">refreshToken</a></li><li><a href="global.html#startServer">startServer</a></li><li><a href="global.html#verifyAndRefreshToken">verifyAndRefreshToken</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Tue Aug 27 2024 15:55:11 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

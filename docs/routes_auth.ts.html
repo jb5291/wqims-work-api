@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: routes/auth.ts</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: routes/auth.ts</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import express, { Router, Request, Response, NextFunction } from "express";
+import cookieParser from "cookie-parser";
+import {base64url, EncryptJWT, jwtDecrypt, errors, JWTPayload} from "jose";
+import { AuthenticationResult, AuthError } from "@azure/msal-node";
+import {
+  queryFeatures,
+  queryRelated,
+  IQueryFeaturesResponse,
+  IQueryRelatedResponse
+} from "@esri/arcgis-rest-feature-service";
+import { ApplicationCredentialsManager } from "@esri/arcgis-rest-request";
+import { appLogger, actionLogger } from "../util/appLogger";
+import { authConfig, BASEURL, FE_FULL_URL, PROXY_LISTEN_PORT } from "../util/secrets";
+import TokenValidator from "../util/tokenValidator";
+import { default as graph } from "../util/graph";
+
+/**
+ * Express router for authentication-related routes.
+ */
+const authRouter: Router = express.Router();
+authRouter.use(cookieParser());
+
+const tokenValidator = new TokenValidator();
+export const gisCredentialManager = new ApplicationCredentialsManager({
+  clientId: authConfig.arcgis.id,
+  clientSecret: authConfig.arcgis.secret,
+});
+
+/**
+ * Route to initiate login process.
+ * @route POST /login
+ */
+authRouter.post("/login", (req: Request, res: Response) => {
+  graph.cca.getAuthCodeUrl({
+    scopes: [`${authConfig.msal.graphEndpoint}/.default`],
+    redirectUri: authConfig.msal.redirectUri,
+  })
+      .then(url => res.json({ redirectUrl: url }))
+      .catch((error: AuthError) => appLogger.error(error.message));
+});
+
+/**
+ * Callback route for handling authentication response.
+ * @route GET /callback
+ */
+authRouter.get("/callback", async (req: Request, res: Response) => {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  try {
+    const response: AuthenticationResult = await graph.cca.acquireTokenByCode({
+      code: req.query.code as string,
+      redirectUri: authConfig.msal.redirectUri,
+      scopes: [`${authConfig.msal.graphEndpoint}/.default`],
+    });
+
+    if (await tokenValidator.validateMSAccessTokenClaims(response.accessToken)) {
+      graph.initGraphClient(response.accessToken);
+      const user = await graph.getUserDetails();
+      const userId = await getUserId(user.mail);
+      const encodedSecret = base64url.decode(authConfig.jwt_secret_key);
+
+      const jwtToken = await createJWT({ userId, homeAccountId: response.account?.homeAccountId }, encodedSecret, "15m");
+      const refreshToken = await createJWT({ userId, homeAccountId: response.account?.homeAccountId }, encodedSecret, "7d");
+
+      res.cookie("token", jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
+      res.cookie("refreshToken", refreshToken, { httpOnly: true, secure: true, sameSite: "none" });
+      actionLogger.info("User logged in", { id: user.mail, ip });
+      res.redirect(`${FE_FULL_URL}/login?success=true`);
+    } else {
+      res.redirect(`${FE_FULL_URL}/login?success=false`);
+    }
+  } catch (error) {
+    console.debug(error);
+    res.redirect(`${FE_FULL_URL}/login?success=false`);
+  }
+});
+
+/**
+ * Route to handle user logout.
+ * @route POST /logout
+ */
+authRouter.post("/logout", async (req: Request, res: Response) => {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+  try {
+    const { userId, homeAccountId } = await getTokenPayload(req.cookies["token"]);
+    const accountToRemove = (await graph.cca.getTokenCache().getAllAccounts())
+        .find(account => account.homeAccountId === homeAccountId);
+
+    if (accountToRemove) await graph.cca.getTokenCache().removeAccount(accountToRemove);
+    actionLogger.info("User logged out", { email: userId, ip });
+    res.clearCookie("token");
+    res.json("Logged out");
+  } catch (error) {
+    appLogger.error(error);
+  }
+});
+
+/**
+ * Route to check proxy status.
+ * @route POST /proxyCheck
+ */
+authRouter.post("/proxyCheck", (req: Request, res: Response) => res.send(true));
+
+/**
+ * Route to check the validity of a token.
+ * @route POST /checkToken
+ */
+authRouter.post("/checkToken", async (req: Request, res: Response) => {
+  try {
+    const status = await checkToken(req, res);
+    res.status(status === "JsonWebTokenError" || status === "TokenExpiredError" ? 403 : 200).send(status === "success" ? true : status)
+  } catch (error) {
+    appLogger.error(error);
+    res.status(403).send("Unauthorized");
+  }
+});
+
+/**
+ * Route to check user action permissions.
+ * @route POST /checkPermissions
+ * @param {string} req.query.action - The action to check permissions for.
+ * @returns {boolean|string} - Returns true if the user has permission, otherwise returns "Forbidden".
+ * @throws {Error} - Throws an error if the user is unauthorized or if there is an internal server error.
+ */
+authRouter.post("/checkPermissions", verifyAndRefreshToken, checkActionPermissions());
+
+/**
+ * Middleware to verify and refresh token if necessary.
+ * @param req - Express request object
+ * @param res - Express response object
+ * @param next - Express next function
+ */
+async function verifyAndRefreshToken(req: Request, res: Response, next: NextFunction) {
+  try {
+    const token = req.cookies["token"];
+    if (!token) return res.status(401).send("Access token not found");
+
+    const encodedSecret = base64url.decode(authConfig.jwt_secret_key);
+    const { payload } = await jwtDecrypt(token, encodedSecret, { issuer: `${BASEURL}:${PROXY_LISTEN_PORT}/auth` });
+
+    if (payload.exp &amp;&amp; payload.exp - Math.floor(Date.now() / 1000) &lt; 90) {
+      const { newAccessToken, newRefreshToken } = await refreshToken(req);
+      res.cookie("token", newAccessToken, { httpOnly: true, secure: true, sameSite: "none" });
+      res.cookie("refreshToken", newRefreshToken, { httpOnly: true, secure: true, sameSite: "none" });
+      req.cookies["token"] = newAccessToken;
+      req.cookies["refreshToken"] = newRefreshToken;
+    }
+    next();
+  } catch (error) {
+    handleTokenError(error, req, res, next);
+  }
+}
+
+/**
+ * Refreshes the access and refresh tokens.
+ * @param req - Express request object
+ * @returns New access and refresh tokens
+ */
+async function refreshToken(req: Request): Promise&lt;{ newAccessToken: string, newRefreshToken: string }> {
+  const encodedSecret = base64url.decode(authConfig.jwt_secret_key);
+  const refreshToken = req.cookies["refreshToken"];
+  if (!refreshToken) throw new Error("Refresh token not found");
+
+  const { payload } = await jwtDecrypt(refreshToken, encodedSecret, { issuer: `${BASEURL}:${PROXY_LISTEN_PORT}/auth` });
+  const { userId, homeAccountId } = payload;
+
+  const newAccessToken = await createJWT({ userId, homeAccountId }, encodedSecret, "15m");
+  const newRefreshToken = await createJWT({ userId, homeAccountId }, encodedSecret, "7d");
+
+  appLogger.info("Token refreshed");
+  return { newAccessToken, newRefreshToken };
+}
+
+/**
+ * Retrieves the user ID based on the provided email.
+ * @param email - User's email address
+ * @returns User ID
+ */
+async function getUserId(email: string): Promise&lt;string> {
+  try {
+    const response: IQueryFeaturesResponse = await queryFeatures({
+      url: `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`,
+      where: `EMAIL = '${email}'`,
+      outFields: ["OBJECTID", "GLOBALID"],
+      returnGeometry: false,
+      authentication: gisCredentialManager,
+    }) as IQueryFeaturesResponse;
+
+    if (response.features?.[0]?.attributes) {
+      const encodedSecret = base64url.decode(authConfig.payload_secret_key);
+      return new EncryptJWT({ userId: response.features[0].attributes.OBJECTID })
+          .setProtectedHeader({ alg: "dir", enc: "A256CBC-HS512" })
+          .setIssuedAt()
+          .setExpirationTime("15m")
+          .encrypt(encodedSecret);
+    } else {
+      throw new Error("User not found");
+    }
+  } catch (error) {
+    appLogger.error(error);
+    throw error;
+  }
+}
+
+/**
+ * Middleware to check action permissions.
+ * @returns Middleware function
+ */
+function checkActionPermissions() {
+  return async function (req: Request, res: Response) {
+    try {
+      const action = req.query.action as string;
+      const userId = await checkToken(req, res);
+      if (!userId) return res.status(403).send("Unauthorized");
+
+      const response = await queryRelated({
+        url: `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`,
+        objectIds: [parseInt(userId)],
+        outFields: ["*"],
+        relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
+        authentication: gisCredentialManager,
+      }) as IQueryRelatedResponse;
+
+      const relatedRecord = response.relatedRecordGroups?.[0]?.relatedRecords?.[0];
+      if (relatedRecord &amp;&amp; action in relatedRecord.attributes) {
+        res.status(relatedRecord.attributes[action] ? 200 : 403).send(relatedRecord.attributes[action] ? true : "Forbidden");
+      } else {
+        appLogger.warn("Action not found in related records");
+        res.status(403).send("Forbidden");
+      }
+    } catch (error) {
+      appLogger.error(error);
+      res.status(403).send("Unauthorized");
+    }
+  };
+}
+
+/**
+ * Checks the validity of the token.
+ * @param req - Express request object
+ * @param res - Express response object
+ * @returns User ID or null
+ */
+async function checkToken(req: Request, res: Response): Promise&lt;string | null> {
+  const encodedSecret = base64url.decode(authConfig.jwt_secret_key);
+  try {
+    const { payload } = await jwtDecrypt(req.cookies["token"], encodedSecret, { issuer: `${BASEURL}:${PROXY_LISTEN_PORT}/auth` });
+    return await decryptUserId(payload.userId as string);
+  } catch (error) {
+    appLogger.error(error);
+    return null;
+  }
+}
+
+/**
+ * Middleware to log requests.
+ * @param req - Express request object
+ * @param res - Express response object
+ * @param next - Express next function
+ */
+async function logRequest(req: Request, res: Response, next: NextFunction) {
+  const userId = await checkToken(req, res);
+  actionLogger.info(`${req.method} ${req.baseUrl}`, { id: userId || "no-token-cookie", ip: req.ip });
+  next();
+}
+
+/**
+ * Decrypts the user ID from the encrypted payload.
+ * @param encryptedPayload - Encrypted payload containing the user ID
+ * @returns Decrypted user ID
+ */
+async function decryptUserId(encryptedPayload: string): Promise&lt;string> {
+  const encodedSecret = base64url.decode(authConfig.payload_secret_key);
+  try {
+    const { payload } = await jwtDecrypt(encryptedPayload, encodedSecret);
+    return payload.userId as string;
+  } catch (error) {
+    if (error instanceof errors.JWTExpired) return error.payload.userId as string;
+    return "error";
+  }
+}
+
+/**
+ * Creates a JWT token.
+ * @param payload - Payload to be included in the JWT
+ * @param secret - Secret key for encryption
+ * @param expiration - Expiration time for the token
+ * @returns JWT token
+ */
+async function createJWT(payload: JWTPayload, secret: Uint8Array, expiration: string): Promise&lt;string> {
+  return new EncryptJWT(payload)
+      .setProtectedHeader({ alg: "dir", enc: "A256CBC-HS512" })
+      .setIssuedAt()
+      .setIssuer(`${BASEURL}:${PROXY_LISTEN_PORT}/auth`)
+      .setExpirationTime(expiration)
+      .encrypt(secret);
+}
+
+/**
+ * Retrieves the payload from the token.
+ * @param token - JWT token
+ * @returns Payload from the token
+ */
+async function getTokenPayload(token: string): Promise&lt;any> {
+  const encodedSecret = base64url.decode(authConfig.jwt_secret_key);
+  const { payload } = await jwtDecrypt(token, encodedSecret);
+  return payload;
+}
+
+/**
+ * Handles token errors.
+ * @param error - Error object
+ * @param req - Express request object
+ * @param res - Express response object
+ * @param next - Express next function
+ */
+function handleTokenError(error: any, req: Request, res: Response, next: NextFunction) {
+  if (error instanceof errors.JWTExpired) {
+    refreshToken(req).then(({ newAccessToken, newRefreshToken }) => {
+      res.cookie("token", newAccessToken, { httpOnly: true, secure: true, sameSite: "none" });
+      res.cookie("refreshToken", newRefreshToken, { httpOnly: true, secure: true, sameSite: "none" });
+      req.cookies["token"] = newAccessToken;
+      req.cookies["refreshToken"] = newRefreshToken;
+      next();
+    }).catch(err => {
+      appLogger.error(err);
+      res.status(403).send("Unauthorized");
+    });
+  } else {
+    appLogger.error(error);
+    res.status(403).send("Unauthorized");
+  }
+}
+
+export { authRouter, verifyAndRefreshToken, checkToken, logRequest };</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="TokenValidator.html">TokenValidator</a></li><li><a href="TokenValidator_TokenValidator.html">TokenValidator</a></li><li><a href="WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsThreshold_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold_WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsUser.html">WqimsUser</a></li><li><a href="WqimsUser_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsUser_WqimsUser.html">WqimsUser</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actionLogFormat">actionLogFormat</a></li><li><a href="global.html#actionLogger">actionLogger</a></li><li><a href="global.html#appLogOptions">appLogOptions</a></li><li><a href="global.html#appLogger">appLogger</a></li><li><a href="global.html#authRouter">authRouter</a></li><li><a href="global.html#checkActionPermissions">checkActionPermissions</a></li><li><a href="global.html#checkToken">checkToken</a></li><li><a href="global.html#createJWT">createJWT</a></li><li><a href="global.html#decryptUserId">decryptUserId</a></li><li><a href="global.html#getDateLabel">getDateLabel</a></li><li><a href="global.html#getEnvVal">getEnvVal</a></li><li><a href="global.html#getTokenPayload">getTokenPayload</a></li><li><a href="global.html#getUserId">getUserId</a></li><li><a href="global.html#handleTokenError">handleTokenError</a></li><li><a href="global.html#logError">logError</a></li><li><a href="global.html#logRequest">logRequest</a></li><li><a href="global.html#parseEnvInt">parseEnvInt</a></li><li><a href="global.html#parseTime">parseTime</a></li><li><a href="global.html#refreshToken">refreshToken</a></li><li><a href="global.html#startServer">startServer</a></li><li><a href="global.html#verifyAndRefreshToken">verifyAndRefreshToken</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Tue Aug 27 2024 15:55:11 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

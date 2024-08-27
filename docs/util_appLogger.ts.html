@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: util/appLogger.ts</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: util/appLogger.ts</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import path from "path";
+import winston from "winston";
+
+/**
+ * Returns the current date and time as a localized string.
+ * @returns {string} - The current date and time.
+ */
+const getDateLabel = () => new Date().toLocaleString();
+
+/**
+ * Custom log format for action logs.
+ * @param {Object} param0 - Log information.
+ * @param {string} param0.level - Log level.
+ * @param {string} param0.message - Log message.
+ * @param {string} param0.timestamp - Timestamp of the log.
+ * @param {string} [param0.id] - Optional ID associated with the log.
+ * @param {string} [param0.ip] - Optional IP address associated with the log.
+ * @returns {string} - Formatted log string.
+ */
+const actionLogFormat = winston.format.printf(({ level, message, timestamp, id, ip }) =>
+    `${timestamp} [IP: ${ip || "unknown"}] [ID: ${id || "no-token-cookie"}] : ${message}`
+);
+
+/**
+ * Logger options for the application logger.
+ * @type {winston.LoggerOptions}
+ */
+const appLogOptions: winston.LoggerOptions = {
+  transports: [
+    new winston.transports.Console({
+      level: process.env.NODE_ENV === "development" ? "debug" : "info",
+      format: winston.format.simple(),
+    }),
+    new winston.transports.File({
+      filename: path.join(__dirname, "..", "..", "logs", "debug.log"),
+      level: "debug",
+      maxFiles: 3,
+      maxsize: 50000000,
+      format: winston.format.printf(info => `${getDateLabel()} - ${info.level} - ${info.message}`),
+    }),
+  ],
+};
+
+/**
+ * Logger for action-specific logs.
+ * @type {winston.Logger}
+ */
+export const actionLogger = winston.createLogger({
+  format: winston.format.combine(winston.format.timestamp(), winston.format.colorize(), actionLogFormat),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({
+      filename: path.join(__dirname, "..", "..", "logs", "actions.log"),
+      level: "info",
+      maxFiles: 3,
+      maxsize: 50000000,
+    }),
+  ],
+});
+
+/**
+ * Logger for general application logs.
+ * @type {winston.Logger}
+ */
+export const appLogger = winston.createLogger(appLogOptions);
+
+/**
+ * Logs an error message using the application logger.
+ * @param {any} error - The error to log. If it's an instance of Error, logs the stack trace.
+ */
+export const logError = (error: any) => {
+  appLogger.error(error instanceof Error ? error.stack : error);
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="TokenValidator.html">TokenValidator</a></li><li><a href="TokenValidator_TokenValidator.html">TokenValidator</a></li><li><a href="WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsThreshold_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold_WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsUser.html">WqimsUser</a></li><li><a href="WqimsUser_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsUser_WqimsUser.html">WqimsUser</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actionLogFormat">actionLogFormat</a></li><li><a href="global.html#actionLogger">actionLogger</a></li><li><a href="global.html#appLogOptions">appLogOptions</a></li><li><a href="global.html#appLogger">appLogger</a></li><li><a href="global.html#authRouter">authRouter</a></li><li><a href="global.html#checkActionPermissions">checkActionPermissions</a></li><li><a href="global.html#checkToken">checkToken</a></li><li><a href="global.html#createJWT">createJWT</a></li><li><a href="global.html#decryptUserId">decryptUserId</a></li><li><a href="global.html#getDateLabel">getDateLabel</a></li><li><a href="global.html#getEnvVal">getEnvVal</a></li><li><a href="global.html#getTokenPayload">getTokenPayload</a></li><li><a href="global.html#getUserId">getUserId</a></li><li><a href="global.html#handleTokenError">handleTokenError</a></li><li><a href="global.html#logError">logError</a></li><li><a href="global.html#logRequest">logRequest</a></li><li><a href="global.html#parseEnvInt">parseEnvInt</a></li><li><a href="global.html#parseTime">parseTime</a></li><li><a href="global.html#refreshToken">refreshToken</a></li><li><a href="global.html#startServer">startServer</a></li><li><a href="global.html#verifyAndRefreshToken">verifyAndRefreshToken</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Tue Aug 27 2024 15:55:11 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

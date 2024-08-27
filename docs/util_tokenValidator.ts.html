@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: util/tokenValidator.ts</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: util/tokenValidator.ts</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * From https://github.com/AzureAD/microsoft-authentication-library-for-js
+ * Making additions to handle token validation for ArcGIS
+ */
+import { CryptoProvider} from "@azure/msal-node";
+import jwt from "jsonwebtoken";
+import jwksClient, { JwksClient } from "jwks-rsa";
+
+import { authConfig } from "./secrets";
+import { JWTPayload} from "jose";
+/**
+ * Basic validation for the access token
+ */
+class TokenValidator {
+    authConfig: any;
+
+    private keyClient: JwksClient;
+
+    /**
+     *
+     * @constructor
+     */
+    constructor() {
+        this.authConfig = authConfig;
+
+        this.keyClient = jwksClient({
+            jwksUri: authConfig.msal.jwksUri_1,
+        });
+    }
+
+    /**
+     * Validate the access token returned from MSAL
+     * @param {string} rawAccessToken
+     * @returns Promise&lt;boolean>
+     */
+    async validateMSAccessTokenClaims(rawAccessToken: string): Promise&lt;boolean> {
+        if (!rawAccessToken) {
+            return false;
+        }
+
+        let issCheck = false;
+        let audCheck = false;
+        let expCheck = false;
+        let scpCheck = false;
+        const now = Math.floor(Date.now() / 1000);
+
+        try {
+            const decodedToken = jwt.decode(rawAccessToken, { complete: true });
+
+            if (!decodedToken) {
+                throw new Error("Invalid token");
+            }
+
+            if ("payload" in decodedToken) {
+                const tokenPayload: string | JWTPayload = decodedToken.payload;
+                if (typeof tokenPayload === "object") {
+                    if ("iss" in tokenPayload &amp;&amp; tokenPayload.iss) {
+                        issCheck = tokenPayload.iss === authConfig.msal.issuer;
+                    }
+
+                    if ("aud" in tokenPayload &amp;&amp; tokenPayload.aud) {
+                        audCheck = tokenPayload.aud === authConfig.msal.graphEndpoint;
+                    }
+
+                    if ("scp" in tokenPayload &amp;&amp; tokenPayload.scp) {
+                        const scpStr = tokenPayload.scp as string;
+                        const scpStrArr = scpStr.split(" ");
+                        if (
+                            scpStrArr.includes("User.Read") &amp;&amp;
+                            scpStrArr.includes("User.Read.All") &amp;&amp;
+                            scpStrArr.includes("profile") &amp;&amp;
+                            scpStrArr.includes("openid") &amp;&amp;
+                            scpStrArr.includes("email") &amp;&amp;
+                            scpStrArr.length === 5
+                        ) {
+                            scpCheck = true;
+                        } else {
+                            scpCheck = false;
+                        }
+                    }
+
+                    if ("exp" in tokenPayload &amp;&amp; tokenPayload.exp &amp;&amp; "iat" in tokenPayload &amp;&amp; tokenPayload.iat) {
+                        expCheck = tokenPayload.exp >= now &amp;&amp; tokenPayload.iat &lt;= now;
+                    }
+                }
+            }
+        } catch (error) {
+            console.log(error);
+            return false;
+        }
+
+        return issCheck &amp;&amp; audCheck &amp;&amp; expCheck &amp;&amp; scpCheck;
+    }
+
+    /**
+     * Fetches signing keys from the openid-configuration endpoint
+     * @param {Object} header: token header
+     * @returns {Promise}
+     */
+    private async getSigningKeys(header: any): Promise&lt;string> {
+        return (await this.keyClient.getSigningKey(header.kid)).getPublicKey();
+    }
+}
+
+export default TokenValidator;
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="TokenValidator.html">TokenValidator</a></li><li><a href="TokenValidator_TokenValidator.html">TokenValidator</a></li><li><a href="WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsThreshold_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold_WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsUser.html">WqimsUser</a></li><li><a href="WqimsUser_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsUser_WqimsUser.html">WqimsUser</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actionLogFormat">actionLogFormat</a></li><li><a href="global.html#actionLogger">actionLogger</a></li><li><a href="global.html#appLogOptions">appLogOptions</a></li><li><a href="global.html#appLogger">appLogger</a></li><li><a href="global.html#authRouter">authRouter</a></li><li><a href="global.html#checkActionPermissions">checkActionPermissions</a></li><li><a href="global.html#checkToken">checkToken</a></li><li><a href="global.html#createJWT">createJWT</a></li><li><a href="global.html#decryptUserId">decryptUserId</a></li><li><a href="global.html#getDateLabel">getDateLabel</a></li><li><a href="global.html#getEnvVal">getEnvVal</a></li><li><a href="global.html#getTokenPayload">getTokenPayload</a></li><li><a href="global.html#getUserId">getUserId</a></li><li><a href="global.html#handleTokenError">handleTokenError</a></li><li><a href="global.html#logError">logError</a></li><li><a href="global.html#logRequest">logRequest</a></li><li><a href="global.html#parseEnvInt">parseEnvInt</a></li><li><a href="global.html#parseTime">parseTime</a></li><li><a href="global.html#refreshToken">refreshToken</a></li><li><a href="global.html#startServer">startServer</a></li><li><a href="global.html#verifyAndRefreshToken">verifyAndRefreshToken</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Tue Aug 27 2024 15:55:11 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

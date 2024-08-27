@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: models/WqimsAlerts.ts</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: models/WqimsAlerts.ts</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import {
+  IFeature,
+  queryRelated,
+  queryFeatures,
+  IQueryFeaturesResponse,
+} from "@esri/arcgis-rest-feature-service";
+import { authConfig } from "../util/secrets";
+import { WqimsObject } from "./Wqims";
+import { Request } from "express";
+import { WqimsGroup } from "./WqimsGroup";
+import { WqimsUser } from "./WqimsUser";
+import { gisCredentialManager } from "../routes/auth";
+import { appLogger } from "../util/appLogger";
+
+/**
+ * Class representing a WqimsAlert.
+ * @extends WqimsObject
+ */
+class WqimsAlert extends WqimsObject {
+  GLOBALID!: string | null;
+  SAMPLENUM!: string;
+  LOCATION!: string;
+  LOCCODE!: string;
+  COLLECTDATE!: number;
+  SAMPLECOLLECTOR!: string;
+  ACODE!: string;
+  ANALYTE!: string;
+  ANALYSEDDATE!: number;
+  ANALYSEDBY!: string;
+  DATEVALIDATED!: number;
+  VALIDATEDBY!: string;
+  GEOCODEMATCHEDADDRESS!: string;
+  RESULT!: string;
+  WARNING_STATUS!: string;
+  STATUS!: string;
+  COMMENTS!: string;
+  ACK_TIME!: number;
+  ACK_BY!: string;
+  CLOSED_TIME!: number;
+  CLOSED_BY!: string;
+  THRESHOLD_ID!: string | null;
+  TEMPLATE_ID!: string | null;
+  RESULT_ID!: string | null;
+  ACTIVE!: number;
+
+  /**
+   * Creates an instance of WqimsAlert.
+   * @param body - The request body.
+   * @param args - Additional arguments.
+   */
+  constructor(body: Request["body"] | null, ...args: any[]) {
+    super(body?.OBJECTID, body?.ACTIVE);
+    Object.assign(this, body || {});
+    if (!body) {
+      [
+        this.GLOBALID,
+        this.SAMPLENUM,
+        this.LOCATION,
+        this.COLLECTDATE,
+        this.SAMPLECOLLECTOR,
+        this.ACODE,
+        this.ANALYSEDDATE,
+        this.ANALYSEDBY,
+        this.DATEVALIDATED,
+        this.VALIDATEDBY,
+        this.GEOCODEMATCHEDADDRESS,
+        this.RESULT,
+        this.LOCCODE,
+        this.WARNING_STATUS,
+        this.ANALYTE,
+        this.STATUS,
+        this.COMMENTS,
+        this.ACK_TIME,
+        this.ACK_BY,
+        this.CLOSED_TIME,
+        this.CLOSED_BY,
+        this.THRESHOLD_ID,
+        this.TEMPLATE_ID,
+        this.RESULT_ID,
+      ] = args;
+    }
+    this.featureUrl = WqimsAlert.featureUrl
+  }
+
+  /**
+   * The URL of the feature service.
+   */
+  static featureUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.alerts}`;
+
+  /**
+   * Retrieves active features.
+   * @returns A promise that resolves to an array of active features.
+   * @throws Will throw an error if the query fails.
+   */
+  static async getActiveFeatures(): Promise&lt;IFeature[]> {
+    try {
+      const response = await queryFeatures({
+        url: this.featureUrl,
+        where: "ACTIVE=1",
+        outFields: "*",
+        returnGeometry: false,
+        authentication: gisCredentialManager,
+      });
+      if ("features" in response) return response.features;
+      throw new Error("Error getting data");
+    } catch (error) {
+      appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
+    }
+  }
+
+  /**
+   * Retrieves alerts for a specific user.
+   * @param userId - The user ID.
+   * @returns A promise that resolves to an array of user alerts.
+   */
+  static async getUserAlerts(userId: number): Promise&lt;IFeature[]> {
+    const thresholdGlobalIDs: number[] = [];
+    const userGroupsResponse = await queryRelated({
+      url: WqimsUser.featureUrl,
+      outFields: ["OBJECTID"],
+      objectIds: [userId],
+      relationshipId: parseInt(authConfig.arcgis.layers.usergroups_rel_id),
+      authentication: gisCredentialManager,
+    });
+
+    if (!userGroupsResponse.relatedRecordGroups?.[0]?.relatedRecords?.length) return [];
+
+    const groupObjectIds = userGroupsResponse.relatedRecordGroups[0].relatedRecords.map((feature) => feature.attributes.OBJECTID);
+
+    const groupThresholdsResponse = await queryRelated({
+      url: WqimsGroup.featureUrl,
+      outFields: ["GLOBALID"],
+      objectIds: groupObjectIds,
+      relationshipId: parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id),
+      authentication: gisCredentialManager,
+    });
+
+    groupThresholdsResponse.relatedRecordGroups?.forEach((group) => {
+      group.relatedRecords?.forEach((feature) => {
+        thresholdGlobalIDs.push(feature.attributes.GLOBALID);
+      });
+    });
+
+    if (!thresholdGlobalIDs.length) return [];
+
+    const alertsResponse = await queryFeatures({
+      url: this.featureUrl,
+      outFields: "*",
+      returnGeometry: false,
+      where: `THRESHOLD_ID IN (${thresholdGlobalIDs.map((id) => `'${id}'`).join(",")})`,
+      authentication: gisCredentialManager,
+    }) as IQueryFeaturesResponse;
+
+    return alertsResponse.features;
+  }
+
+  /**
+   * Updates alert status for a specific user.
+   * @param userId - The user ID.
+   * @returns A promise that resolves when the alert status has been updated.
+   * @throws Will throw an error if the status update fails.
+   */
+  async updateStatus(userId: number) {
+    try {
+      const userResponse = await queryFeatures({
+        url: WqimsUser.featureUrl,
+        outFields: ["NAME"],
+        where: `OBJECTID=${userId}`,
+        returnGeometry: false,
+        authentication: gisCredentialManager,
+      }) as IQueryFeaturesResponse;
+
+      if (!userResponse.features?.length) throw new Error("User not found");
+
+      switch (this.STATUS.toLowerCase()) {
+        case "closed":
+          Object.assign(this, {
+            CLOSED_TIME: Date.now(),
+            CLOSED_BY: userResponse.features[0].attributes.NAME,
+            STATUS: "Closed",
+            // ACTIVE: 0,
+          });
+          break;
+        case "acknowledged":
+          Object.assign(this, {
+            ACK_TIME: Date.now(),
+            ACK_BY: userResponse.features[0].attributes.NAME,
+            STATUS: "Acknowledged",
+          });
+          break;
+        default:
+          throw new Error("Invalid status");
+      }
+
+      return await this.updateFeature();
+    } catch (error) {
+      appLogger.error("Alert Acknowledge Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "Alert Acknowledge error" };
+    }
+  }
+}
+
+export { WqimsAlert };</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="TokenValidator.html">TokenValidator</a></li><li><a href="TokenValidator_TokenValidator.html">TokenValidator</a></li><li><a href="WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsThreshold_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold_WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsUser.html">WqimsUser</a></li><li><a href="WqimsUser_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsUser_WqimsUser.html">WqimsUser</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actionLogFormat">actionLogFormat</a></li><li><a href="global.html#actionLogger">actionLogger</a></li><li><a href="global.html#appLogOptions">appLogOptions</a></li><li><a href="global.html#appLogger">appLogger</a></li><li><a href="global.html#authRouter">authRouter</a></li><li><a href="global.html#checkActionPermissions">checkActionPermissions</a></li><li><a href="global.html#checkToken">checkToken</a></li><li><a href="global.html#createJWT">createJWT</a></li><li><a href="global.html#decryptUserId">decryptUserId</a></li><li><a href="global.html#getDateLabel">getDateLabel</a></li><li><a href="global.html#getEnvVal">getEnvVal</a></li><li><a href="global.html#getTokenPayload">getTokenPayload</a></li><li><a href="global.html#getUserId">getUserId</a></li><li><a href="global.html#handleTokenError">handleTokenError</a></li><li><a href="global.html#logError">logError</a></li><li><a href="global.html#logRequest">logRequest</a></li><li><a href="global.html#parseEnvInt">parseEnvInt</a></li><li><a href="global.html#parseTime">parseTime</a></li><li><a href="global.html#refreshToken">refreshToken</a></li><li><a href="global.html#startServer">startServer</a></li><li><a href="global.html#verifyAndRefreshToken">verifyAndRefreshToken</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Tue Aug 27 2024 15:55:11 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

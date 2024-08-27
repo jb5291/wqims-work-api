@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: models/WqimsThreshold.ts</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: models/WqimsThreshold.ts</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import { WqimsObject } from "./Wqims";
+import { Request } from "express";
+import { authConfig } from "../util/secrets";
+import {
+  deleteFeatures,
+  IEditFeatureResult,
+  IQueryFeaturesResponse,
+  IQueryResponse,
+  queryFeatures,
+  updateFeatures,
+} from "@esri/arcgis-rest-feature-service";
+import { gisCredentialManager } from "../routes/auth";
+
+/**
+ * Class representing a WqimsThreshold.
+ * @extends WqimsObject
+ */
+class WqimsThreshold extends WqimsObject {
+  GLOBALID!: string | null;
+  LOCATION_CODE!: string;
+  LOCATION_NAME!: string;
+  PROJECT_NAME!: string;
+  ANALYSIS!: string;
+  ANALYTE!: string;
+  UPPER_LOWER_SPECS!: string;
+  SPECS_VALUE!: number;
+  ACKTIMEOUT!: number;
+  CLOSEOUTTIMEOUT!: number;
+  TEMPLATE_ID!: string;
+  SYSTEM!: string;
+  UNIT!: string;
+
+  /**
+   * Creates an instance of WqimsThreshold.
+   * @param body - The request body.
+   * @param args - Additional arguments.
+   */
+  constructor(body: Request["body"] | null, ...args: any[]) {
+    super(body?.OBJECTID, body?.ACTIVE);
+    Object.assign(this, body || {});
+    if (!body) {
+      [
+        this.GLOBALID,
+        this.LOCATION_CODE,
+        this.LOCATION_NAME,
+        this.PROJECT_NAME,
+        this.ANALYSIS,
+        this.ANALYTE,
+        this.UPPER_LOWER_SPECS,
+        this.SPECS_VALUE,
+        this.ACKTIMEOUT,
+        this.CLOSEOUTTIMEOUT,
+        this.TEMPLATE_ID,
+        this.SYSTEM,
+        this.UNIT,
+      ] = args;
+    }
+
+    this.featureUrl = WqimsThreshold.featureUrl;
+  }
+
+  /**
+   * The URL of the feature service.
+   */
+  static featureUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.thresholds}`;
+
+  /**
+   * The URL of the groups relationship class.
+   */
+  static groupsRelationshipClassUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.thresholds_groups}`;
+
+  /**
+   * Sets the global ID.
+   * @param value - The global ID.
+   */
+  set globalId(value: string | null) {
+    this.GLOBALID = value;
+  }
+
+  /**
+   * Checks for inactive thresholds.
+   * @returns {Promise&lt;IEditFeatureResult>} A promise that resolves to the result of the reactivation operation.
+   */
+  async checkInactive(): Promise&lt;IEditFeatureResult> {
+    const response = await queryFeatures({
+      url: this.featureUrl,
+      where: `ACTIVE=0 AND LOCATION_CODE='${this.LOCATION_CODE}' AND ANALYSIS='${this.ANALYSIS}'`,
+      authentication: gisCredentialManager,
+    }) as IQueryFeaturesResponse;
+
+    if (response.features?.length) {
+      this.GLOBALID = response.features[0].attributes.GLOBALID;
+    }
+
+    return this.reactivateFeature(response);
+  }
+
+  /**
+   * Removes relationship records from M2M tables
+   * @param relClassUrl relationship class url
+   * @returns {Promise&lt;IEditFeatureResult | undefined>} A promise that resolves to the result of the remove relationship operation.
+   */
+  async removeRelationship(relClassUrl: string): Promise&lt;IEditFeatureResult | undefined> {
+    const queryRelResponse = await queryFeatures({
+      url: relClassUrl,
+      where: `THRSHLD_ID='${this.GLOBALID}'`,
+      returnIdsOnly: true,
+      authentication: gisCredentialManager,
+    }) as IQueryResponse;
+
+    if (queryRelResponse.objectIds?.length) {
+      const deleteRelResponse = await deleteFeatures({
+        url: relClassUrl,
+        objectIds: queryRelResponse.objectIds,
+        authentication: gisCredentialManager,
+      });
+
+      if (deleteRelResponse.deleteResults[0].success) {
+        return deleteRelResponse.deleteResults[0];
+      } else {
+        return Promise.reject(deleteRelResponse.deleteResults[0]?.error?.description);
+      }
+    } else {
+      return { objectId: this.OBJECTID || 0, success: true };
+    }
+  }
+}
+
+export { WqimsThreshold };</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="TokenValidator.html">TokenValidator</a></li><li><a href="TokenValidator_TokenValidator.html">TokenValidator</a></li><li><a href="WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsThreshold_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold_WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsUser.html">WqimsUser</a></li><li><a href="WqimsUser_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsUser_WqimsUser.html">WqimsUser</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actionLogFormat">actionLogFormat</a></li><li><a href="global.html#actionLogger">actionLogger</a></li><li><a href="global.html#appLogOptions">appLogOptions</a></li><li><a href="global.html#appLogger">appLogger</a></li><li><a href="global.html#authRouter">authRouter</a></li><li><a href="global.html#checkActionPermissions">checkActionPermissions</a></li><li><a href="global.html#checkToken">checkToken</a></li><li><a href="global.html#createJWT">createJWT</a></li><li><a href="global.html#decryptUserId">decryptUserId</a></li><li><a href="global.html#getDateLabel">getDateLabel</a></li><li><a href="global.html#getEnvVal">getEnvVal</a></li><li><a href="global.html#getTokenPayload">getTokenPayload</a></li><li><a href="global.html#getUserId">getUserId</a></li><li><a href="global.html#handleTokenError">handleTokenError</a></li><li><a href="global.html#logError">logError</a></li><li><a href="global.html#logRequest">logRequest</a></li><li><a href="global.html#parseEnvInt">parseEnvInt</a></li><li><a href="global.html#parseTime">parseTime</a></li><li><a href="global.html#refreshToken">refreshToken</a></li><li><a href="global.html#startServer">startServer</a></li><li><a href="global.html#verifyAndRefreshToken">verifyAndRefreshToken</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Tue Aug 27 2024 15:55:11 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

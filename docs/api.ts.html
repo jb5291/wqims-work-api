@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: api.ts</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: api.ts</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import express from "express";
+import cors from "cors";
+import swaggerJSDoc from "swagger-jsdoc";
+import swaggerUI from "swagger-ui-express";
+
+import qs from "qs";
+import fs from "fs";
+import http from "http";
+import https from "https";
+import cookieParser from "cookie-parser";
+
+import { TLS_CERT_INFO, PROXY_LISTEN_PORT, BASEURL, ALLOWED_ORIGINS } from "./util/secrets";
+import groupsRouter from "./routes/groups";
+import usersRouter from "./routes/users";
+import thresholdsRouter from "./routes/thresholds";
+import alertsRouter from "./routes/alerts";
+// import checklistsRouter from "./routes/checklists"; TODO
+import { authRouter } from "./routes/auth";
+
+const app = express();
+
+/**
+ * Middleware setup for the Express application.
+ */
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.set("query parser", (str: string) => qs.parse(str));
+app.use(cookieParser());
+app.set("port", PROXY_LISTEN_PORT || 3001);
+
+/**
+ * Route handlers for the application.
+ */
+app.use("/notificationGroups", groupsRouter);
+app.use("/users", usersRouter);
+app.use("/thresholds", thresholdsRouter);
+app.use("/alerts", alertsRouter);
+// app.use("/checklists", checklistsRouter); TODO
+app.use("/auth", authRouter);
+
+const swaggerOptions = {
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "WQIMS API",
+      version: "1.0.0",
+      description: "API documentation generated using Swagger-jsdoc",
+    },
+  },
+  apis: ["./dist/routes/*.js"],
+};
+
+const swaggerSpec = swaggerJSDoc(swaggerOptions);
+
+/**
+ * Endpoint to serve the Swagger JSON documentation.
+ * @name /swagger.json
+ * @function
+ * @memberof module:routes
+ * @inner
+ * @param {Object} req - Express request object.
+ * @param {Object} res - Express response object.
+ */
+app.get("/swagger.json", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.send(swaggerSpec);
+});
+
+/**
+ * Middleware to serve the Swagger UI documentation.
+ */
+app.use("/api-docs", swaggerUI.serve, swaggerUI.setup(swaggerSpec));
+
+/**
+ * Starts the server with the given options.
+ * @param {https.ServerOptions|undefined} options - HTTPS server options or undefined for HTTP.
+ */
+const startServer = (options: https.ServerOptions | undefined) => {
+  const server = options ? https.createServer(options, app) : http.createServer(app);
+  server.listen(app.get("port"), "0.0.0.0", () => {
+    console.debug(`App is running at ${BASEURL}:${app.get("port")} in ${app.get("env")} mode\nAllowed Origins: ${ALLOWED_ORIGINS}`);
+  });
+};
+
+/**
+ * Conditionally starts the server with HTTPS or HTTP based on TLS certificate information.
+ */
+if (TLS_CERT_INFO &amp;&amp; TLS_CERT_INFO.type &amp;&amp; TLS_CERT_INFO.cert &amp;&amp; TLS_CERT_INFO.key) {
+  const options = TLS_CERT_INFO.type === "pfx"
+      ? { pfx: fs.readFileSync(TLS_CERT_INFO.cert), passphrase: TLS_CERT_INFO.key }
+      : { key: fs.readFileSync(TLS_CERT_INFO.key), cert: fs.readFileSync(TLS_CERT_INFO.cert) };
+  startServer(options);
+} else {
+  startServer(undefined);
+}</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="TokenValidator.html">TokenValidator</a></li><li><a href="TokenValidator_TokenValidator.html">TokenValidator</a></li><li><a href="WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsThreshold_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold_WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsUser.html">WqimsUser</a></li><li><a href="WqimsUser_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsUser_WqimsUser.html">WqimsUser</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actionLogFormat">actionLogFormat</a></li><li><a href="global.html#actionLogger">actionLogger</a></li><li><a href="global.html#appLogOptions">appLogOptions</a></li><li><a href="global.html#appLogger">appLogger</a></li><li><a href="global.html#authRouter">authRouter</a></li><li><a href="global.html#checkActionPermissions">checkActionPermissions</a></li><li><a href="global.html#checkToken">checkToken</a></li><li><a href="global.html#createJWT">createJWT</a></li><li><a href="global.html#decryptUserId">decryptUserId</a></li><li><a href="global.html#getDateLabel">getDateLabel</a></li><li><a href="global.html#getEnvVal">getEnvVal</a></li><li><a href="global.html#getTokenPayload">getTokenPayload</a></li><li><a href="global.html#getUserId">getUserId</a></li><li><a href="global.html#handleTokenError">handleTokenError</a></li><li><a href="global.html#logError">logError</a></li><li><a href="global.html#logRequest">logRequest</a></li><li><a href="global.html#parseEnvInt">parseEnvInt</a></li><li><a href="global.html#parseTime">parseTime</a></li><li><a href="global.html#refreshToken">refreshToken</a></li><li><a href="global.html#startServer">startServer</a></li><li><a href="global.html#verifyAndRefreshToken">verifyAndRefreshToken</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Tue Aug 27 2024 15:55:11 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

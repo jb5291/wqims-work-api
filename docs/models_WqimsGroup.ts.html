@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: models/WqimsGroup.ts</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: models/WqimsGroup.ts</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import { WqimsObject } from "./Wqims";
+import {
+  addFeatures,
+  deleteFeatures,
+  IEditFeatureResult,
+  IFeature, IQueryFeaturesResponse, IQueryResponse,
+  IRelatedRecordGroup,
+  queryFeatures,
+  queryRelated,
+  updateFeatures,
+} from "@esri/arcgis-rest-feature-service";
+import { Request } from "express";
+import { gisCredentialManager } from "../routes/auth";
+import { authConfig } from "../util/secrets";
+import { appLogger } from "../util/appLogger";
+import { WqimsUser } from "./WqimsUser";
+import { WqimsThreshold } from "./WqimsThreshold";
+
+/**
+ * Class representing a WqimsGroup.
+ * @extends WqimsObject
+ */
+class WqimsGroup extends WqimsObject {
+  GROUPNAME: string;
+  GROUPID: string | null;
+  MEMBERS: WqimsUser[];
+  THRESHOLDS: WqimsThreshold[];
+
+  /**
+   * Creates an instance of WqimsGroup.
+   * @param body - The request body.
+   * @param GROUPNAME - The group name.
+   * @param ACTIVE - The active status.
+   * @param MEMBERS - The group members.
+   * @param THRESHOLDS - The group thresholds.
+   * @param OBJECTID - The object ID.
+   * @param GROUPID - The group ID.
+   */
+  constructor(
+      body: Request["body"] | null,
+      GROUPNAME?: string,
+      ACTIVE?: number,
+      MEMBERS?: WqimsUser[],
+      THRESHOLDS?: WqimsThreshold[],
+      OBJECTID?: number,
+      GROUPID?: string | null
+  ) {
+    super(body?.OBJECTID ?? OBJECTID, body?.ACTIVE ?? ACTIVE);
+    this.GROUPNAME = body?.GROUPNAME ?? GROUPNAME ?? "";
+    this.MEMBERS = body?.MEMBERS ?? MEMBERS ?? [];
+    this.THRESHOLDS = body?.THRESHOLDS ?? THRESHOLDS ?? [];
+    this.GROUPID = body?.GROUPID ?? GROUPID ?? null;
+
+    this.featureUrl = WqimsGroup.featureUrl;
+  }
+
+  /**
+   * The URL of the feature service.
+   */
+  static featureUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.groups}`;
+
+  /**
+   * The URL of the users relationship class.
+   */
+  static usersRelationshipClassUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users_groups}`;
+
+  /**
+   * The URL of the thresholds relationship class.
+   */
+  static thresholdsRelationshipClassUrl = `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.thresholds_groups}`;
+
+  /**
+   * Assigns thresholds to groups.
+   * @param GROUPIDs - The group IDs.
+   * @param thresholdId - The threshold ID.
+   * @returns A promise that resolves to the result of the add operation.
+   */
+  static async assignThresholds(GROUPIDs: string[], thresholdId: string): Promise&lt;IEditFeatureResult> {
+    const features = GROUPIDs.map(id => ({ attributes: { GROUP_ID: id, THRSHLD_ID: thresholdId } }));
+    const result = await addFeatures({ url: this.thresholdsRelationshipClassUrl, authentication: gisCredentialManager, features });
+    return result.addResults[0];
+  }
+
+  /**
+   * Assigns members to groups.
+   * @param GROUPIDs - The group IDs.
+   * @param userId - The user ID.
+   * @returns A promise that resolves to the result of the add operation.
+   */
+  static async assignMembers(GROUPIDs: string[], userId: string): Promise&lt;IEditFeatureResult> {
+    const features = GROUPIDs.map(id => ({ attributes: { GROUP_ID: id, USER_ID: userId } }));
+    const result = await addFeatures({ url: this.usersRelationshipClassUrl, authentication: gisCredentialManager, features });
+    return result.addResults[0];
+  }
+
+  /**
+   * Assigns items to groups.
+   * @param response - The response from a query operation.
+   * @returns A promise that resolves to an array of WqimsGroup instances.
+   */
+  static async assignItemsToGroup(response: IFeature[]): Promise&lt;WqimsGroup[]> {
+    return Promise.all(response.map(async groupFeature => {
+      const group = new WqimsGroup(groupFeature.attributes);
+      group.MEMBERS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.usergroups_rel_id)).then(items => items.map(item => new WqimsUser(item.attributes)));
+      group.THRESHOLDS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id)).then(items => items.map(item => new WqimsThreshold(item.attributes)));
+      return group;
+    }));
+  }
+
+  /**
+   * Sets the group ID.
+   * @param value - The group ID.
+   */
+  set groupId(value: string | null) {
+    this.GROUPID = value;
+  }
+
+  /**
+   * Checks for inactive groups.
+   * @returns A promise that resolves to the result of the reactivation operation.
+   */
+  async checkInactive(): Promise&lt;IEditFeatureResult> {
+    const response = await queryFeatures({ url: this.featureUrl, where: `ACTIVE=0 AND GROUPNAME='${this.GROUPNAME}'`, authentication: gisCredentialManager }) as IQueryFeaturesResponse;
+    if (response.features?.length) this.groupId = response.features[0].attributes.GROUPID;
+    return this.reactivateFeature(response);
+  }
+
+  /**
+   * Updates an existing group.
+   * @returns A promise that resolves to the result of the update operation.
+   */
+  async updateFeature(): Promise&lt;IEditFeatureResult> {
+    const { MEMBERS, THRESHOLDS, ...groupWithoutItems } = this;
+    const response = await updateFeatures({ url: this.featureUrl, features: [{ attributes: groupWithoutItems }], authentication: gisCredentialManager });
+    return response.updateResults[0];
+  }
+
+  /**
+   * Soft deletes a group by setting its active status to 0.
+   * @returns A promise that resolves to the result of the soft delete operation.
+   */
+  async softDeleteFeature(): Promise&lt;IEditFeatureResult> {
+    this.ACTIVE = 0;
+    const { MEMBERS, THRESHOLDS, ...groupWithoutItems } = this;
+    const response = await updateFeatures({ url: this.featureUrl, features: [{ attributes: groupWithoutItems }], authentication: gisCredentialManager });
+    return response.updateResults[0];
+  }
+
+  /**
+   * Adds items to a group.
+   * @param relClassUrl - The relationship class URL.
+   * @param items - The items to add.
+   * @returns A promise that resolves to the result of the add operation.
+   */
+  async addGroupItems(relClassUrl: string, items: WqimsUser[] | WqimsThreshold[]): Promise&lt;IEditFeatureResult> {
+    const ids = items.map(feature => feature.GLOBALID);
+    const features = ids.map(id => ({ attributes: { GROUP_ID: this.GROUPID, [relClassUrl === WqimsGroup.thresholdsRelationshipClassUrl ? 'THRSHLD_ID' : 'USER_ID']: id } }));
+    const result = await addFeatures({ url: relClassUrl, authentication: gisCredentialManager, features });
+    return result.addResults[0];
+  }
+
+  /**
+   * Deletes items from a group.
+   * @param relClassUrl - The relationship class URL.
+   * @param items - The items to delete.
+   * @returns A promise that resolves to the result of the delete operation.
+   */
+  async deleteGroupItems(relClassUrl: string, items: (WqimsUser[] | WqimsThreshold[])): Promise&lt;IEditFeatureResult> {
+    let whereClause: string;
+    if ('ANALYTE' in items[0]) {
+      whereClause = `GROUP_ID='${this.GROUPID}' AND THRSHLD_ID IN ('${items.map(feature=>feature.GLOBALID).join("','")}')`;
+    } else {
+      whereClause = `GROUP_ID='${this.GROUPID}' AND USER_ID IN ('${items.map(feature=>feature.GLOBALID).join("','")}')`;
+    }
+    const queryResult = await queryFeatures({ url: relClassUrl, where: whereClause, returnIdsOnly: true, authentication: gisCredentialManager }) as IQueryResponse;
+    if (queryResult.objectIds?.length) {
+      const deleteResult = await deleteFeatures({ url: relClassUrl, objectIds: queryResult.objectIds, authentication: gisCredentialManager });
+      return deleteResult.deleteResults[0];
+    }
+    return { objectId: -1, success: queryResult.objectIds?.length === 0, error: { code: 999, description: queryResult.objectIds?.length === 0 ? "No relationships found" : "Invalid relationship class URL" } };
+  }
+
+  /**
+   * Retrieves items for a group.
+   * @param relationshipId - The relationship ID.
+   * @returns A promise that resolves to an array of features.
+   * @throws Will throw an error if the query fails.
+   */
+  async getGroupItems(relationshipId: number): Promise&lt;IFeature[]> {
+    try {
+      const response = await queryRelated({ url: this.featureUrl, objectIds: [this.objectId], relationshipId, outFields: "*", authentication: gisCredentialManager });
+      return response.relatedRecordGroups?.[0]?.relatedRecords ?? [];
+    } catch (error) {
+      appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
+    }
+  }
+}
+
+export { WqimsGroup };</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Classes</h3><ul><li><a href="TokenValidator.html">TokenValidator</a></li><li><a href="TokenValidator_TokenValidator.html">TokenValidator</a></li><li><a href="WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsAlert.html">WqimsAlert</a></li><li><a href="WqimsAlert_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsGroup.html">WqimsGroup</a></li><li><a href="WqimsGroup_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject.html">WqimsObject</a></li><li><a href="WqimsObject_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsThreshold_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsThreshold_WqimsThreshold.html">WqimsThreshold</a></li><li><a href="WqimsUser.html">WqimsUser</a></li><li><a href="WqimsUser_WqimsObject.html">WqimsObject</a></li><li><a href="WqimsUser_WqimsUser.html">WqimsUser</a></li></ul><h3>Global</h3><ul><li><a href="global.html#actionLogFormat">actionLogFormat</a></li><li><a href="global.html#actionLogger">actionLogger</a></li><li><a href="global.html#appLogOptions">appLogOptions</a></li><li><a href="global.html#appLogger">appLogger</a></li><li><a href="global.html#authRouter">authRouter</a></li><li><a href="global.html#checkActionPermissions">checkActionPermissions</a></li><li><a href="global.html#checkToken">checkToken</a></li><li><a href="global.html#createJWT">createJWT</a></li><li><a href="global.html#decryptUserId">decryptUserId</a></li><li><a href="global.html#getDateLabel">getDateLabel</a></li><li><a href="global.html#getEnvVal">getEnvVal</a></li><li><a href="global.html#getTokenPayload">getTokenPayload</a></li><li><a href="global.html#getUserId">getUserId</a></li><li><a href="global.html#handleTokenError">handleTokenError</a></li><li><a href="global.html#logError">logError</a></li><li><a href="global.html#logRequest">logRequest</a></li><li><a href="global.html#parseEnvInt">parseEnvInt</a></li><li><a href="global.html#parseTime">parseTime</a></li><li><a href="global.html#refreshToken">refreshToken</a></li><li><a href="global.html#startServer">startServer</a></li><li><a href="global.html#verifyAndRefreshToken">verifyAndRefreshToken</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.3</a> on Tue Aug 27 2024 15:55:11 GMT-0400 (Eastern Daylight Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

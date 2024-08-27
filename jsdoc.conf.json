@@ -5,7 +5,10 @@
     "excludePattern": "(node_modules/|docs/|dist/|test/)",
     "exclude": ["src/test", "node_modules", "dist", "docs"]
   },
-  "plugins": ["plugins/markdown"],
+  "plugins": [
+    "plugins/markdown",
+    "node_modules/better-docs/typescript"
+  ],
   "opts": {
     "destination": "./docs",
     "recurse": true

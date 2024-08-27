@@ -79,7 +79,7 @@ class WqimsThreshold extends WqimsObject {
 
   /**
    * Checks for inactive thresholds.
-   * @returns A promise that resolves to the result of the reactivation operation.
+   * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the reactivation operation.
    */
   async checkInactive(): Promise<IEditFeatureResult> {
     const response = await queryFeatures({
@@ -98,7 +98,7 @@ class WqimsThreshold extends WqimsObject {
   /**
    * Removes relationship records from M2M tables
    * @param relClassUrl relationship class url
-   * @returns 
+   * @returns {Promise<IEditFeatureResult | undefined>} A promise that resolves to the result of the remove relationship operation.
    */
   async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult | undefined> {
     const queryRelResponse = await queryFeatures({
