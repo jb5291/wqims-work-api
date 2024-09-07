@@ -1,9 +1,16 @@
 import express from 'express';
 import OracleDB, { Connection } from 'oracledb';
+import axios, { AxiosResponse } from 'axios';
+import { ApiKeyManager, ApplicationCredentialsManager, ArcGISIdentityManager, ErrorTypes, IFeature, request } from '@esri/arcgis-rest-request';
+import { addFeatures, updateFeatures, deleteFeatures, queryFeatures, IQueryFeaturesResponse, IQueryResponse, IEditFeatureResult } from '@esri/arcgis-rest-feature-service';
+import { v4 as uuidv4 } from 'uuid';
 
-import { EB_CREDS, WQIMS_DB_CONFIG } from "../util/secrets";
+import { BASEURL, EB_CREDS, WQIMS_DB_CONFIG, WQIMS_REST_INFO } from "../util/secrets";
 import { appLogger, actionLogger } from '../util/appLogger';
+import { IWQIMSRole } from '../models/IRole';
 import graphHelper from '../util/graph';
+import { IWQIMSUser } from '../models/IUser';
+import { AGSsession } from '../api';
 
 const usersRouter = express.Router();
 const dbConf = {
@@ -11,50 +18,170 @@ const dbConf = {
   password: WQIMS_DB_CONFIG.password,
   connectString: WQIMS_DB_CONFIG.connection_string
 };
+interface arcgisError {
+  code: number,
+  description: string
+}
 
 /**
  * @swagger
  * components:
  *  schemas:
+ *    AddUserData:
+ *      type: object
+ *      properties:
+ *        NAME:
+ *          type: string
+ *        DEPARTMENT:
+ *          type: string
+ *        POSITION:
+ *          type: string
+ *        DIVISION:
+ *          type: string
+ *        PHONENUMBER:
+ *          type: string
+ *        EMAIL:
+ *          type: string
+ *        ROLE:
+ *          type: string
+ *        RAPIDRESPONSETEAM:
+ *           type: integer
+ *        ALTPHONENUMBER:
+ *           type: string
+ *           nullable: true
+ *        STARTTIME:
+ *           type: string
+ *           nullable: true
+ *        ENDTIME:
+ *           type: string
+ *           nullable: true
+ *        ACTIVE:
+ *           type: integer
+ *           nullable: true
  *    UserData:
  *      type: object
  *      properties:
- *        name:
+ *        OBJECTID:
+ *          type: number
+ *        GLOBALID:
  *          type: string
- *        department:
+ *        NAME:
  *          type: string
- *        position:
+ *        DEPARTMENT:
  *          type: string
- *        division:
+ *        POSITION:
  *          type: string
- *        phoneNumber:
+ *        DIVISION:
  *          type: string
- *        email:
+ *        PHONENUMBER:
  *          type: string
- *        role:
+ *        EMAIL:
  *          type: string
- *        rapidResponseTeam:
+ *        ROLE:
+ *          type: string
+ *        RAPIDRESPONSETEAM:
  *           type: integer
- *        altPhoneNumber:
+ *        ALTPHONENUMBER:
  *           type: string
  *           nullable: true
- *        startTime:
+ *        STARTTIME:
  *           type: string
  *           nullable: true
- *        endTime:
+ *        ENDTIME:
  *           type: string
  *           nullable: true
+ *        ACTIVE:
+ *           type: integer
+ *           nullable: true
+ *    ArcGISEditFeatureResponse:
+ *      type: object
+ *      properties:
+ *        addResults:
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              objectId:
+ *                type: number
+ *              globalId:
+ *                type: string
+ *              success:
+ *                type: boolean
+ *              error:
+ *                type: object
+ *                properties: 
+ *                  code:
+ *                    type: number
+ *                  description:
+ *                    type: string
+ *    ArcGISGetUsersResponse:
+ *      type: object
+ *      properties:
+ *        objectIdFieldName: 
+ *          type: string
+ *        globalIdFieldName: 
+ *          type: string
+ *        hasZ:
+ *          type: boolean
+ *        hasM:
+ *          type: boolean
+ *        fields: 
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              name:
+ *                type: string
+ *              alias:
+ *                type: string
+ *              type:
+ *                type: string
+ *              length:
+ *                type: number
+ *        features:
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              attributes:
+ *                type: object
+ *                properties:
+ *                  OBJECTID:
+ *                    type: number
+ *                  GLOBALID:
+ *                    type: string
+ *                  NAME:
+ *                    type: string
+ *                  DEPARTMENT:
+ *                    type: string
+ *                  POSITION:
+ *                    type: string
+ *                  DIVISION:
+ *                    type: string
+ *                  PHONENUMBER:
+ *                    type: string
+ *                  EMAIL:
+ *                    type: string
+ *                  ROLE:
+ *                    type: string
+ *                  RAPIDRESPONSETEAM:
+ *                    type: integer
+ *                  ALTPHONENUMBER:
+ *                    type: string
+ *                    nullable: true
+ *                  STARTTIME:
+ *                    type: string
+ *                    nullable: true
+ *                  ENDTIME:
+ *                    type: string
+ *                    nullable: true
  */
-
-OracleDB.createPool(dbConf)
-.then(pool => {
-  appLogger.info('Connection pool created for users');
 
   /**
    * @swagger
    * /users:
    *  get:
-   *    summary: Get list of users
+   *    summary: Get list of active users
    *    description: Gets a list of groups from DSNGIST wqims.users
    *    tags: 
    *      - Users
@@ -64,34 +191,42 @@ OracleDB.createPool(dbConf)
    *        content:
    *          application/json:
    *            schema:
-   *              type: array
-   *              items:
-   *                $ref: '#/components/schemas/UserData'
-   *      '502':
-   *        description: Bad Gateway
+   *              $ref: '#/components/schemas/ArcGISGetUsersResponse'
+   *      '500':
+     *        description: Internal Server Error
    *        content:
    *          application/json:
    *            schema:
    *              type: string
-   *              example: 'Bad Gateway: DB Connection Error'
+   *              example: 'Internal Server Error'
    */
-  usersRouter.get('/', async (req, res) => {
-    pool.getConnection((err, conn) => {
-      if(err) {
-        appLogger.error('Error getting connection: ', err);
-        return res.status(502).send('DB Connection Error');
-      }
-
-      conn.execute(`select * FROM ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where ACTIVE <> 0`, [], (err, result) => {
-        if(err) {
-          appLogger.error("Error executing query:", err);
-        return res.status(502).send('DB Connection Error');
+usersRouter.get('/', async (req, res) => {
+  try {
+    AGSsession.refreshToken()
+    .then((manager: string) => {
+      queryFeatures({
+        url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
+        where: 'ACTIVE=1',
+        authentication: manager
+      }).then((response: IQueryFeaturesResponse | IQueryResponse) => {
+        if('features' in response) {
+          res.json(response.features);
+        } else {
+          throw new Error('Error getting data');
         }
-        res.json(result.rows);
-        conn.release();
+      }).catch((error: any) => {
+        throw new Error(error.message);
       });
+    })
+  }
+  catch (error: any) {
+    appLogger.error('User GET Error:', error.stack)
+    res.status(500).send({
+      error: error.message,
+      message: 'User GET error'
     });
-  });
+  }
+});
 
   /**
    * @swagger
@@ -106,199 +241,322 @@ OracleDB.createPool(dbConf)
    *      content:
    *        application/json:
    *          schema:
-   *            $ref: '#/components/schemas/UserData'
+   *            $ref: '#/components/schemas/AddUserData'
    *    responses:
    *      '200':
    *        description: User added successfully
    *        content:
    *          application/json:
    *            schema:
-   *              type: object
-   *      '502':
-   *        description: Bad Gateway
+   *              $ref: '#/components/schemas/ArcGISEditFeatureResponse'
+   *      '500':
+   *        description: Internal Server Error
    *        content:
    *          application/json:
    *            schema:
    *              type: string
-   *              example: 'Bad Gateway: DB Connection Error'
-   */    
-  usersRouter.put('/', async (req, res) => {
-    let connection: Connection | null = null;
-    let result: any;
+   *              example: 'Internal Server Error'
+   */   
+usersRouter.put('/', async (req, res) => {
+  try {
+    let getUserResult: IQueryFeaturesResponse | IQueryResponse;
+    const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
+      clientId: WQIMS_REST_INFO.appId,
+      clientSecret: WQIMS_REST_INFO.secret,
+    });
+    const user: IWQIMSUser = req.body;
+    const roleIds: IWQIMSRole[] = await getRoleIds(session);
 
-    try {
-      connection = await pool.getConnection();
+    if(!user) {
+      throw new Error('User data not provided');
+    } 
 
-      const user = req.body;
-      const inactiveUser: any = await findInactiveUser(user.email, connection);
+    // query user table to see if user already exists and is inactive
+    // DOES NOT CHECK IF THE USER EXISTS ALREADY, ONLY IF THEY ARE INACTIVE
+    // NEED TO CHECK FOR DUPLICATE USERS ON THE FRONT END
+    await queryFeatures({
+      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
+      where: `ACTIVE=0 AND EMAIL='${user.EMAIL}'`,
+      authentication: session
+    })
+    .then(async (response: IQueryFeaturesResponse | IQueryResponse) => {
+      getUserResult = response;
+      // if user exists and is inactive, update the user
+      if('features' in getUserResult && getUserResult.features.length > 0) {
+        //
+        // REACTIVATE USER
+        //
+        await updateFeatures({
+          url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
+          features: [{
+            attributes: {
+              OBJECTID: getUserResult.features[0].attributes.OBJECTID,
+              GLOBALID: getUserResult.features[0].attributes.GLOBALID,
+              ACTIVE: 1,
+              ...req.body
+            }
+          }],
+          authentication: session
+        })
+        .then(async (response: { updateResults: IEditFeatureResult[] }) => { 
+          const updateResult: IEditFeatureResult = response.updateResults[0];
+          // if the user was inactive, find their previous role, and compare it to the new role
+          if('features' in getUserResult) {
+            //
+            //  FETCH USER ROLE
+            //
+            await updateUserRole(session, getUserResult.features[0].attributes, roleIds)
+            .then((response: IEditFeatureResult) => {
+              if('error' in response) {
+                throw new Error(response.error?.description);
+              }
+            })
+            .catch((error: any) => {
+              throw new Error(error.message);
+            })
+          } else {
+            throw new Error('Error getting user data');
+          }
+          res.json(updateResult);
+        })
+        .catch((error: any) => {
+          throw new Error(error.message);
+        });
+      } else { // create a new user
+        const new_guid = `{${uuidv4().toUpperCase()}}`;
+        user.GLOBALID = new_guid;
+        user.ACTIVE = 1;
+        addFeatures({
+          url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
+          features: [{
+            attributes: {
+              ...user,
+            }
+          }],
+          authentication: session
+        })
+        .then(async (response: { addResults: IEditFeatureResult[] }) => {
+          await updateUserRole(session, user, roleIds)
+          .then((response: IEditFeatureResult) => {
+            if('error' in response) {
+              throw new Error(response.error?.description);
+            }
+          })
+          .catch((error: any) => {
+            throw new Error(error.message);
+          })
+          res.json(response.addResults[0]);
+        })
+        .catch((error: any) => {
+          throw new Error(error.message);
+        })
+      }
+    })
+    .catch((error: any) => {
+      throw new Error(error.message);
+    });
 
-      if(inactiveUser.length > 0) {
-        user.GLOBALID = inactiveUser[0].GLOBALID;
-        user.OBJECTID = inactiveUser[0].OBJECTID;
-        result = await addInactiveUser(user, connection);
-        if(inactiveUser[0].ROLE.toLowerCase() !== user.role.toLowerCase()) { // re-add with different role
-          const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
-          await editAddInactiveUserRole(inactiveUser[0].GLOBALID, roleId, connection);
+  }
+  catch (error: any) {
+    appLogger.error('User PUT error:', error);
+    res.status(500).send({
+      error: error.message,
+      message: 'User GET error'
+    })
+  }
+})
+
+/**
+ * @swagger
+ * /users:
+ *  post:
+ *    summary: Deactivates a user from wqims.users
+ *    description: Deactivates a user from wqims.users based on ID provided in body
+ *    tags:
+ *      - Users
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            $ref: '#/components/schemas/UserData'
+ *    responses:
+ *      '200':
+ *        description: User deactivated successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/ArcGISEditFeatureResponse'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+usersRouter.post('/', async (req, res) => {
+  try {
+    const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
+      clientId: WQIMS_REST_INFO.appId,
+      clientSecret: WQIMS_REST_INFO.secret,
+    });
+    const user = req.body;
+    let updateResult: IEditFeatureResult;
+    if(!user) {
+      throw new Error('User data not provided');
+    }
+    // assuming this is only run on active users
+    // soft delete
+    await updateFeatures({
+      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
+      features: [{
+        attributes: {
+          OBJECTID: user.OBJECTID,
+          GLOBALID: user.GLOBALID,
+          ACTIVE: 0
+        }
+      }],
+      authentication: session
+    })
+    .then(async (response: { updateResults: IEditFeatureResult[] }) => {
+      updateResult = response.updateResults[0];
+      if('success' in updateResult && updateResult.success) {
+        // need to delete from roles and groups rel classes
+        // or else those records get orphaned
+        await deleteFeatures({
+          url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_roles_lyr_id}`,
+          objectIds: [],
+          where: `USER_ID='${user.GLOBALID}'`,
+          authentication: session,
+        })
+        .then(async (response: { deleteResults: IEditFeatureResult[] }) => {
+          const deleteResult: IEditFeatureResult = response.deleteResults[0];
+          if( !deleteResult || 'success' in deleteResult && deleteResult.success) {
+            await deleteFeatures({
+              url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_groups_lyr_id}`,
+              objectIds: [],
+              where: `USER_ID='${user.GLOBALID}'`,
+              authentication: session
+            })
+            .then((response: { deleteResults: IEditFeatureResult[] }) => {
+              return;
+            })
+            .catch((error: any) => {
+              throw new Error(error.message);
+            })
+          } else {
+            if('error' in deleteResult) {
+              throw new Error(deleteResult.error?.description);
+            }
+          }
+        })
+        .catch((error: any) => {
+          throw new Error(error.message);
+        })
+        res.json(updateResult);
+      } else {
+        if('error' in updateResult) {
+          throw new Error(updateResult.error?.description);
+        } else {
+          throw new Error('Error deactivating user');
+        }
+      }
+    })
+    .catch((error: any) => {
+      throw new Error(error.message);
+    })
+  }
+  catch (error: any) {
+    appLogger.error('User DELETE error:', error);
+    res.status(500).send({
+      error: error.message,
+      message: 'User DELETE error'
+    });
+  }
+})
+
+/**
+ * @swagger
+ * /users:
+ *  patch:
+ *    summary: Update a user in wqims.users
+ *    description: Updates a user in wqims.users based on ID provided in body
+ *    tags:
+ *      - Users
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            $ref: '#/components/schemas/UserData'
+ *    responses:
+ *      '200':
+ *        description: User updated successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/ArcGISEditFeatureResponse'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+usersRouter.patch('/', async (req, res) => {
+  try {
+    const user = req.body;
+    const session: ApplicationCredentialsManager = new ApplicationCredentialsManager({
+      clientId: WQIMS_REST_INFO.appId,
+      clientSecret: WQIMS_REST_INFO.secret,
+    });
+    const roles: IWQIMSRole[] = await getRoleIds(session);
+  
+    await updateFeatures({
+      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_lyr_id}`,
+      authentication: session,
+      features: [{
+        attributes: {
+          ...user
+        }
+      }],
+    })
+    .then((response: { updateResults: IEditFeatureResult[] }) => {
+      // need to update role if role has changed
+      updateUserRole(session, user, roles)
+      .then((response: IEditFeatureResult) => {
+        if('error' in response) {
+          throw new Error(response.error?.description);
+        }
+      })
+      .catch((error: any) => {
+        throw new Error(error.message);
+      });
+      const updateResult: IEditFeatureResult = response.updateResults[0];
+      if('success' in updateResult && updateResult.success) {
+        res.json(response.updateResults[0]);
+      } else {
+        if('error' in updateResult) {
+          throw new Error(updateResult.error?.description);
         }
         else {
-          await addInactiveUserRole(inactiveUser[0].GLOBALID, connection);
+          throw new Error('Error updating user');
         }
-        const groupCheck: any = await findInactiveGroupMember(inactiveUser[0].GLOBALID, connection);
-        if(groupCheck.length > 0) { // re-add to group(s)
-          await reactivateGroupUser(inactiveUser[0].GLOBALID, connection);
-        }
-      } else {
-        result = await addUser(user, connection);
-        const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
-        await addUserRole(result.GLOBALID, roleId, connection);
       }
-      const ebResult = await addMemberToEB(user);
-      connection.commit();
-      actionLogger.info('User added', { email: user.email });
-      res.json(result);
-    }
-    catch (error) {
-      appLogger.error(error);
-      connection?.rollback();
-      res.status(502).send('DB Connection Error, operation rolled back');
-    }
-    finally {
-      if(connection) {
-        connection.release((err: any) => {
-          if(err) {
-            appLogger.error('Error releasing connection:', err);
-          }
-        });
-      }
-    }
-  });
-
-  /**
-   * @swagger
-   * /users/{id}:
-   *  delete:
-   *    summary: Deactivates a user from wqims.users
-   *    description: Deactivates a user from wqims.users based on the provided ID
-   *    tags:
-   *      - Users
-   *    parameters:
-   *      - in: path
-   *        name: id
-   *        required: true
-   *        description: The ID of the user to deactivate
-   *        schema:
-   *          type: string
-   *    responses:
-   *      '200':
-   *        description: User deactivated successfully
-   *      '502':
-   *        description: Bad Gateway
-   *        content:
-   *          application/json:
-   *            schema:
-   *              type: string
-   *              example: 'Bad Gateway: DB Connection Error'
-   */
-  usersRouter.delete('/:id', async (req, res) => {
-    let connection: Connection | null = null;
-    try {
-      connection = await pool.getConnection();
-      const id = req.params.id;
-      const user: any = await findUser(id, connection);
-      const result = await deactivateUser(id, connection);
-      await deactivateGroupUser(id, connection);
-      await deactivateUserRole(id, connection);
-
-      connection.commit();
-      await deleteMemberFromEB(id);
-      actionLogger.info('User deactivated', { email: user[0].EMAIL });
-      res.send(result);
-    }
-    catch (error) {
-      appLogger.error(error);
-      connection?.rollback();
-      res.status(502).send('DB Connection Error, operation rolled back');
-    }
-    finally {
-      if(connection) {
-        connection.release((err: any) => {
-          if(err) {
-            appLogger.error('Error releasing connection:', err);
-          }
-        });
-      }
-    }
-  });
-
-  /** 
-   * @swagger
-  * /users/{id}:
-  *  patch:
-  *    summary: Update a user in wqims.users
-  *    description: Updates a user in wqims.users based on the provided ID
-  *    tags:
-  *      - Users
-  *    parameters:
-  *      - in: path
-  *        name: id
-  *        required: true
-  *        description: The ID of the user to update
-  *        schema:
-  *          type: string
-  *    requestBody:
-  *      required: true
-  *      content:
-  *        application/json:
-  *          schema:
-  *            $ref: '#/components/schemas/UserData'
-  *    responses:
-  *      '200':
-  *        description: User updated successfully
-  *        content:
-  *          application/json:
-  *            schema:
-  *              type: object
-  *      '502':
-  *        description: Bad Gateway
-  *        content:
-  *          application/json:
-  *            schema:
-  *              type: string
-  *              example: 'Bad Gateway: DB Connection Error'
-  */
-  usersRouter.patch('/:id', async (req, res) => {
-    let connection: Connection | null = null;
-    try {
-      connection = await pool.getConnection();
-      const id = req.params.id;
-      const user = req.body;
-      const result = await updateUser(id, user, connection);
-      const roleId: any = await getRoleId(user.role.toLowerCase(), connection);
-      await updateUserRole(id, roleId, connection);
-      await updateMemberEBInfo(user);
-
-      connection.commit();
-      actionLogger.info('User updated', { email: user.email });
-      res.send(result);
-    }
-    catch (error) {
-      appLogger.error(error);
-      connection?.rollback();
-      res.status(502).send('DB Connection Error, operation rolled back');
-    }
-    finally {
-      if(connection) {
-        connection.release((err: any) => {
-          if(err) {
-            appLogger.error('Error releasing connection:', err);
-          }
-        });
-      }
-    }
-  });
-})
-.catch(error => {
-  appLogger.error("Error creating connection pool:", error)
+    })
+    .catch((error: any) => {
+      throw new Error(error.message);
+    })
+  }
+  catch (error: any) {
+    appLogger.error('User PATCH error:', error);
+    res.status(500).send({
+      error: error.message,
+      message: 'User PATCH error'
+    });
+  }
 })
 
 usersRouter.use('/search', async (req, res) => {
@@ -312,638 +570,104 @@ usersRouter.use('/search', async (req, res) => {
   }
 });
 
-function addUser(user: any, connection: Connection) {
+function getRoleIds(session: ApplicationCredentialsManager): Promise<IWQIMSRole[]> {
   return new Promise((resolve, reject) => {
-    let query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} (NAME, DEPARTMENT, PHONENUMBER, EMAIL, ROLE, RAPIDRESPONSETEAM, DIVISION, SECONDARYPHONENUMBER, ACTIVE, STARTTIME, ENDTIME) values (:name, :department, :phonenumber, :email, :role, :rapidresponseteam, :division, :altphonenumber, 1, :starttime, :endtime) returning GLOBALID, OBJECTID into :outGid, :outOid`;
-    let bindParams: any = {
-      name: user.name ? user.name : 'none',
-      department: user.department ? user.department : 'none',
-      phonenumber: user.phonenumber ? user.phonenumber : 'none',
-      email: user.email ? user.email : 'none',
-      role: user.role ? user.role : 'none',
-      rapidresponseteam: user.rapidresponseteam ? user.rapidresponseteam : 0,
-      division: user.division ? user.division : 'none',
-      altphonenumber: user.altphonenumber ? user.altphonenumber : 'none',
-      startTime: user.startTime ? user.startTime : 'none',
-      endTime: user.endTime ? user.endTime : 'none',
-      outGid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT},
-      outOid: {type: OracleDB.STRING, dir: OracleDB.BIND_OUT}
-    }
-    let bindDefs: any = {
-      NAME: {type: OracleDB.STRING, maxSize: 128},
-      DEPARTMENT: {type: OracleDB.STRING, maxSize: 128},
-      DIVISION: {type: OracleDB.STRING, maxSize: 64},
-      PHONENUMBER: {type: OracleDB.STRING, maxSize: 12},
-      EMAIL: {type: OracleDB.STRING, maxSize: 128},
-      ROLE: {type: OracleDB.STRING, maxSize: 64},
-      ALTPHONENUMBER: {type: OracleDB.STRING, maxSize: 12},
-      STARTTIME: {type: OracleDB.STRING, maxSize: 24},
-      ENDTIME: {type: OracleDB.STRING, maxSize: 24},
-      outGid: {type: OracleDB.STRING},
-      outOid: {type: OracleDB.NUMBER}
-    }
-    const options = {
-      autoCommit: false,
-      bindDefs: bindDefs,
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-  
-    connection.execute(query, bindParams, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error adding user:', err);
-        reject(err);
-      }
-      const ids = result.outBinds as any;
-      user.GLOBALID = ids.outGid[0];
-      user.OBJECTID = ids.outOid[0];
-      resolve(user);
-    });
-  });
-}
-
-function getRoleId(role: string, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `select ROLE_ID from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.rolesTbl} where ROLE = :role`;
-    const options = {
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-
-    connection.execute(query, {role: role}, options, (err, result: any) => {
-      if(err) {
-        appLogger.error('Error getting role ID:', err);
-        reject(err);
-      }
-      else {
-        if(typeof result !== 'undefined')
-          resolve(result.rows[0].ROLE_ID);
-      }
-    });
-  });
-}
-
-function addUserRole(userId: string, roleId: string, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `insert into ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} (USER_ID, ROLE_ID, ACTIVE) values (:userId, :roleId, 1)`;
-    const options = {
-      autoCommit: false,
-      bindDefs: {
-        userId: {type: OracleDB.STRING},
-        roleId: {type: OracleDB.STRING}
-      },
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId, roleId: roleId}, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error adding user role:', err);
-        reject(err);
-      }
-      else {
-        resolve(result);
-      }
-    })
-  });
-}
-  
-
-function addInactiveUser(user: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    let query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} set ACTIVE = 1, `;
-    let bindParams: any = {
-      id: user.GLOBALID
-    }
-    let bindDefs: any = {}
-    if(user.name) {
-      query += 'NAME = :name, ';
-      bindParams['name'] = user.name;
-      bindDefs['name'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if(user.department) {
-      query += 'DEPARTMENT = :department, ';
-      bindParams['department'] = user.department;
-      bindDefs['department'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if(user.division) {
-      query += 'DIVISION = :division, ';
-      bindParams['division'] = user.division;
-      bindDefs['division'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if(user.phonenumber) {
-      query += 'PHONENUMBER = :phonenumber, ';
-      bindParams['phonenumber'] = user.phonenumber;
-      bindDefs['phonenumber'] = {type: OracleDB.STRING, maxSize: 12};
-    }
-    if(user.email) {
-      query += 'EMAIL = :email, ';
-      bindParams['email'] = user.email;
-      bindDefs['email'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if(user.role) {
-      query += 'ROLE = :role, ';
-      bindParams['role'] = user.role;
-      bindDefs['role'] = {type: OracleDB.STRING, maxSize: 64};
-    }
-    if(user.altphonenumber) {
-      query += 'SECONDARYPHONENUMBER = :altphonenumber, ';
-      bindParams['altphonenumber'] = user.altphonenumber;
-      bindDefs['altphonenumber'] = {type: OracleDB.STRING, maxSize: 12};
-    }
-    if(user.rapidresponseteam) {
-      query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
-      bindParams['rapidresponseteam'] = user.rapidresponseteam;
-      bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
-    }
-    if(user.starttime) {
-      query += 'STARTTIME = :starttime, ';
-      bindParams['starttime'] = user.starttime;
-      bindDefs['starttime'] = {type: OracleDB.STRING, maxSize: 24};
-    }
-    if(user.endtime) {
-      query += 'ENDTIME = :endtime, ';
-      bindParams['endtime'] = user.endtime;
-      bindDefs['endtime'] = {type: OracleDB.STRING, maxSize: 24};
-    }
-    query = query.slice(0, -2); // remove trailing comma
-    query +=  ` where GLOBALID = :id`;
-    const options = {
-      autoCommit: false,
-      bindDefs: bindDefs,
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, bindParams, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error adding inactive user:', err);
-        reject(err);
-      }
-      else {
-        user.ACTIVE = 1;
-        resolve(user);
-      }
-    });
-  });
-}
-
-function addInactiveUserRole(userId: string, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} set ACTIVE = 1 where USER_ID = :userId`;
-    const options = {
-      autoCommit: false,
-      bindDefs: {
-        userId: {type: OracleDB.STRING}
-      },
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId}, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error adding inactive user role:', err);
-        reject(err);
-      }
-      else {
-        resolve(result);
-      }
-    });
-  });
-}
-
-function editAddInactiveUserRole(userId: string, newRoleId: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `UPDATE ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} set ACTIVE = 1, ROLE_ID = :newRoleId where USER_ID = :userId`;
-    const options = {
-      autoCommit: false,
-      bindDefs: {
-        userId: {type: OracleDB.STRING},
-        newRoleId: {type: OracleDB.STRING}
-      },
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId, newRoleId: newRoleId}, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error updating inactive user role:', err);
-        reject(err);
-      }
-      else {
-        resolve(result);
-      }
-    })
-  })
-}
-
-function deactivateUser(id: string, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} set ACTIVE = 0 where GLOBALID = :id `;
-    const options = {
-      autoCommit: false,
-      bindDefs: {
-        id: {type: OracleDB.NUMBER}
-      },
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-
-    connection.execute(query, {id: id}, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error deleting user:', err);
-        reject(err);
-      }
-      resolve(result);
-    });
-  });
-}
-
-function updateUser(id: string, user: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    let query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} set `
-    let bindParams: any = {}
-    let bindDefs: any = {}
-
-    if(user.name !== null && typeof user.name !== 'undefined') {
-      query += 'NAME = :name, ';
-      bindParams['name'] = user.name;
-      bindDefs['name'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if(user.department !== null && typeof user.department !== 'undefined') {
-      query += 'DEPARTMENT = :department, ';
-      bindParams['department'] = user.department === '' ? 'none' : user.department;
-      bindDefs['department'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if(user.position !== null && typeof user.position !== 'undefined') {
-      query += 'POSITION = :position, ';
-      bindParams['position'] = user.position === '' ? 'none' : user.position;
-      bindDefs['position'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if(user.division !== null && typeof user.division !== 'undefined') {
-      query += 'DIVISION = :division, ';
-      bindParams['division'] = user.division === '' ? 'none' : user.division;
-      bindDefs['division'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if('phonenumber' in user) {
-      if(user.phonenumber !== null && typeof user.phonenumber !== 'undefined') {
-        query += 'PHONENUMBER = :phonenumber, ';
-        bindParams['phonenumber'] = user.phonenumber;
-        bindDefs['phonenumber'] = {type: OracleDB.STRING, maxSize: 12};
-      }
-    } else {
-      if(user.phoneNumber !== null && typeof user.phoneNumber !== 'undefined') {
-        query += 'PHONENUMBER = :phoneNumber, ';
-        bindParams['phoneNumber'] = user.phoneNumber;
-        bindDefs['phoneNumber'] = {type: OracleDB.STRING, maxSize: 12};
-      }
-    }
-    if(user.email !== null && typeof user.email !== 'undefined') {
-      query += 'EMAIL = :email, ';
-      bindParams['email'] = user.email;
-      bindDefs['email'] = {type: OracleDB.STRING, maxSize: 128};
-    }
-    if(user.role !== null && typeof user.role !== 'undefined') {
-      query += 'ROLE = :role, ';
-      bindParams['role'] = user.role;
-      bindDefs['role'] = {type: OracleDB.STRING, maxSize: 64};
-    }
-    if('rapidresponseteam' in user) {
-      if(user.rapidresponseteam !== null && typeof user.rapidresponseteam !== 'undefined') {
-        query += 'RAPIDRESPONSETEAM = :rapidresponseteam, ';
-        bindParams['rapidresponseteam'] = user.rapidresponseteam;
-        bindDefs['rapidresponseteam'] = {type: OracleDB.NUMBER, maxSize: 5};
-      }
-    } else {
-      if(user.rapidResponseTeam !== null && typeof user.rapidResponseTeam !== 'undefined') {
-        query += 'RAPIDRESPONSETEAM = :rapidResponseTeam, ';
-        bindParams['rapidResponseTeam'] = user.rapidResponseTeam;
-        bindDefs['rapidResponseTeam'] = {type: OracleDB.NUMBER, maxSize: 5};
-      }
-    }
-    if('altphonenumber' in user) {
-      if(user.altphonenumber !== null && typeof user.altphonenumber !== 'undefined') {
-        query += 'SECONDARYPHONENUMBER = :altphonenumber, ';
-        bindParams['altphonenumber'] = user.altphonenumber;
-        bindDefs['altphonenumber'] = {type: OracleDB.STRING, maxSize: 12};
-      }
-    } else {
-      if(user.altPhoneNumber !== null && typeof user.altPhoneNumber !== 'undefined') {
-        query += 'SECONDARYPHONENUMBER = :altPhoneNumber, ';
-        bindParams['altPhoneNumber'] = user.altPhoneNumber;
-        bindDefs['altPhoneNumber'] = {type: OracleDB.STRING, maxSize: 12};
-      }
-    }
-    if('starttime' in user) {
-      if(user.starttime !== null && typeof user.starttime !== 'undefined') {
-        query += 'STARTTIME = :starttime, ';
-        bindParams['starttime'] = user.starttime;
-        bindDefs['starttime'] = {type: OracleDB.STRING, maxSize: 24};
-      }
-    } else {
-      if(user.startTime !== null && typeof user.startTime !== 'undefined') {
-        query += 'STARTTIME = :startTime, ';
-        bindParams['startTime'] = user.startTime;
-        bindDefs['startTime'] = {type: OracleDB.STRING, maxSize: 24};
-      }
-    }
-    if('endtime' in user) {
-      if(user.endtime !== null && typeof user.endtime !== 'undefined') {
-        query += 'ENDTIME = :endtime, ';
-        bindParams['endtime'] = user.endtime;
-        bindDefs['endtime'] = {type: OracleDB.STRING, maxSize: 24};
-      }
-    } else {
-      if(user.endTime !== null && typeof user.endTime !== 'undefined') {
-        query += 'ENDTIME = :endTime, ';
-        bindParams['endTime'] = user.endTime;
-        bindDefs['endTime'] = {type: OracleDB.STRING, maxSize: 24};
-      }
-    }
-
-    query = query.slice(0, -2); // remove trailing comma
-
-    query += ` where GLOBALID = :id`;
-
-    const options = {
-      autoCommit: false,
-      bindDefs: bindDefs,
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-
-    connection.execute(query, { ...bindParams, id: id }, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error updating user:', err);
-        reject(err);
-      }
-      resolve(result);
-    });
-  });
-}
-
-function updateUserRole(userId: string, roleId: string, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} set ROLE_ID = :roleId where USER_ID = :userId`;
-    const options = {
-      autoCommit: false,
-      bindDefs: {
-        userId: {type: OracleDB.STRING},
-        roleId: {type: OracleDB.STRING}
-      },
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId, roleId: roleId}, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error updating user role:', err);
-        reject(err);
-      }
-      else {
-        resolve(result);
-      }
-    })
-  });
-}
-
-function findInactiveUser(email: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    let query = `select * from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where EMAIL = :email and ACTIVE = 0`;
-    let bindParams = {
-      email: email
-    }
-    let options = {
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-
-    connection.execute(query, bindParams, options, (err, result) => {
-      if(err) {
-        appLogger.error('Error finding inactive user:', err);
-        reject(err);
+    queryFeatures({
+      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.roles_lyr_id}/query`,
+      where: '1=1',
+      outFields: '*',
+      authentication: session
+    }).then((response: IQueryFeaturesResponse | IQueryResponse) => {
+      if('features' in response) {
+        resolve(response.features.map((feature: IFeature) => {
+          return {
+            ROLE_ID: feature.attributes.GLOBALID,
+            ROLE: feature.attributes.ROLE,
+            PERMISSIONS: {
+              ADD_USER: feature.attributes.ADD_USER,
+              EDIT_USER: feature.attributes.EDIT_USER,
+              DELETE_USER: feature.attributes.DELETE_USER,
+              ASSIGN_USER_ROLE: feature.attributes.ASSIGN_USER_ROLE,
+              ADD_THRESHOLD: feature.attributes.ADD_THRESHOLD,
+              EDIT_THRESHOLD: feature.attributes.EDIT_THRESHOLD,
+              DELETE_THRESHOLD: feature.attributes.DELETE_THRESHOLD,
+              ADD_GROUP: feature.attributes.ADD_GROUP,
+              ADD_GROUP_USER: feature.attributes.ADD_GROUP_USER,
+              ADD_GROUP_THRESHOLD: feature.attributes.ADD_GROUP_THRESHOLD,
+              EDIT_GROUP: feature.attributes.EDIT_GROUP,
+              REMOVE_GROUP_USER: feature.attributes.REMOVE_GROUP_USER,
+              REMOVE_GROUP: feature.attributes.REMOVE_GROUP,
+              REVIEW_ALERTS: feature.attributes.REVIEW_ALERTS,
+              ACKNOWLEDGE_ALERTS: feature.attributes.ACKNOWLEDGE_ALERTS,
+            }
+          }
+        }))
       } else {
-        resolve(result.rows);
-      }
-    });
-  });
-}
-
-function deactivateGroupUser(userId: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} set ACTIVE = 0 where USER_ID = :userId`;
-    const options = {
-      autoCommit: false,
-      bindDefs: {
-        userId: {type: OracleDB.STRING}
-      },
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId}, options, (err, result) => {
-      if(err) {
-        appLogger.error(err)
-        reject(err);
-      }
-      else {
-        resolve(result)
+        reject([]);
       }
     })
   })
 }
 
-function deactivateUserRole(userId: any, connection: Connection) {
+// Fetches the role from the rel class, checks if user input role matches
+// updates the role if it doesn't match
+// returns the IEditFeatureResponse
+function updateUserRole(session: ApplicationCredentialsManager, user: any, roles: IWQIMSRole[]): Promise<IEditFeatureResult> {
   return new Promise((resolve, reject) => {
-    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.userRolesTbl} set ACTIVE = 0 where USER_ID = :userId`;
-    const options = {
-      autoCommit: false,
-      bindDefs: {
-        userId: {type: OracleDB.STRING}
-      },
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId}, options, (err, result) => {
-      if(err) {
-        appLogger.error(err);
-        reject(err);
-      }
-      else {
-        resolve(result);
-      }
-    });
-  })
-}
-
-function findInactiveGroupMember(userId: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `select * from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} where USER_ID = :userId and ACTIVE = 0`;
-    const options = {
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId}, options, (err, result) => {
-      if(err) {
-        appLogger.error(err);
-        reject(err);
-      }
-      else {
-        resolve(result.rows);
-      }
+    queryFeatures({
+      url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_roles_lyr_id}`,
+      where: `USER_ID = '${user.globalid}'`,
+      authentication: session
     })
-  })
-}
-
-function reactivateGroupUser(userId: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `update ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.notificationGrpMembersTbl} set ACTIVE = 1 where USER_ID = :userId`;
-    const options = {
-      autoCommit: false,
-      bindDefs: {
-        userId: {type: OracleDB.STRING}
-      },
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId}, options, (err, result) => {
-      if(err) {
-        appLogger.error(err);
-        reject(err);
-      }
-      else {
-        resolve(result);
-      }
-    })
-  });
-}
-
-function findUser(userId: any, connection: Connection) {
-  return new Promise((resolve, reject) => {
-    const query = `select NAME, EMAIL from ${WQIMS_DB_CONFIG.username}.${WQIMS_DB_CONFIG.usersTbl} where GLOBALID = :userId`;
-    const options = {
-      outFormat: OracleDB.OUT_FORMAT_OBJECT
-    }
-    connection.execute(query, {userId: userId}, options, (err, result) => {
-      if(err) {
-        appLogger.error(err);
-        reject(err);
-      }
-      else {
-        resolve(result.rows);
-      }
-    });
-  })
-}
-
-function addMemberToEB(user: any) {
-  return new Promise((resolve, reject) => {
-    const startHour = user.starttime.includes('PM') ? parseInt(user.starttime.split(':')[0]) + 12 : parseInt(user.starttime.split(':')[0]);
-    const startMinute = parseInt(user.starttime.split(':')[1].split(' ')[0]);
-    const endHour = user.endtime.includes('PM') ? parseInt(user.endtime.split(':')[0]) + 12 : parseInt(user.endtime.split(':')[0]);
-    const endMinute = parseInt(user.endtime.split(':')[1].split(' ')[0]);
-    const postOptions = {
-      method: 'POST',
-      headers: {
-          accept: 'application/json',
-          'content-type': 'application/json',
-          authorization: 'Basic ' + Buffer.from(`${EB_CREDS.username}:${EB_CREDS.password}`).toString('base64')
-      },
-      body: JSON.stringify({
-          firstName: user.name.split(' ')[0],
-          lastName: user.name.split(' ')[1],
-          recordTypeId: EB_CREDS.emp_id,
-          groupsName: [
-              'GIS-TEST-Water-Quality-Alerts'
-          ],
-          externalId: user.GLOBALID,
-          paths: [
-              {
-                  waitTime: 0,
-                  pathId: EB_CREDS.sms_id,
-                  countryCode: 'US',
-                  value: !user.phonenumber || user.phonenumber === '' ? user.altphonenumber.replace(/\-/g, '') : user.phonenumber.replace(/\-/g,''),
-                  quietTimeFrames: [ // would depend on hours of operation
-                      {name: 'Hours of Operation M-F', days: [1,2,3,4,5], fromHour: endHour, fromMin: endMinute, toHour: startHour, toMin: startMinute},
-                  ]
-              },
-              {
-                  waitTime: 0,
-                  pathId: EB_CREDS.email_id,
-                  countryCode: 'US',
-                  value: user.email,
+    .then((response: IQueryFeaturesResponse | IQueryResponse) => {
+      // if there is a response with features, then role is being updated
+      if('features' in response && response.features.length > 0) {
+        const prev_role = response.features[0].attributes;
+        if(prev_role.map((role: IWQIMSRole)=>role.ROLE_ID) !== user.role.toLowerCase()) {
+          const newRoleId: string | undefined = roles.find(role => role.ROLE === user.ROLE.toLowerCase())?.ROLE_ID;
+          if(newRoleId) {
+            updateFeatures({
+              url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_roles_lyr_id}`,
+              features: [{
+                attributes: {
+                  RID: prev_role.RID,
+                  USER_ID: response.features[0].attributes.GLOBALID,
+                  ROLE_ID: newRoleId
+                }
+              }],
+              authentication: session
+            })
+            .then((response: { updateResults: IEditFeatureResult[] }) => {
+              const roleUpdateResponse: IEditFeatureResult = response.updateResults[0];
+              if('success' in roleUpdateResponse && roleUpdateResponse.success) {
+                resolve(roleUpdateResponse);
+              } else {
+                reject(roleUpdateResponse);
               }
-          ],
-          timezoneId: 'America/New_York'
-      })
-    }
-
-    fetch(`https://api.everbridge.net/rest/contacts/${EB_CREDS.organization_id}`, postOptions)
-        .then(response => response.json())
-        .then(data => {
-            console.log('Success:')
-            console.dir(data)
-            resolve(data);
-            console.log('end')
+            })
+          }
+        }
+      } else { // response with no features, no role assigned, so add role
+        addFeatures({
+          url: `${WQIMS_REST_INFO.url}/${WQIMS_REST_INFO.users_roles_lyr_id}`,
+          features: [{
+            attributes: {
+              USER_ID: user.GLOBALID,
+              ROLE_ID: roles.find(role => role.ROLE === user.ROLE.toLowerCase())?.ROLE_ID
+            }
+          }],
+          authentication: session
         })
-        .catch(err => reject(err));
-  });
-}
-
-function deleteMemberFromEB(userId: string) {
-  return new Promise((resolve, reject) => {
-    const deleteOptions = {
-      method: 'DELETE',
-      headers: {
-          accept: 'application/json',
-          authorization: 'Basic ' + Buffer.from(`${EB_CREDS.username}:${EB_CREDS.password}`).toString('base64')
+        .then((response: { addResults: IEditFeatureResult[] }) => {
+          const roleAddResponse: IEditFeatureResult = response.addResults[0];
+          if('success' in roleAddResponse && roleAddResponse.success) {
+            resolve(roleAddResponse);
+          } else {
+            reject(roleAddResponse);
+          }
+        })
       }
-    }
-
-    fetch(`https://api.everbridge.net/rest/contacts/${EB_CREDS.organization_id}/${userId}?idType=externalId`, deleteOptions)
-        .then(response => response.json())
-        .then(data => {
-            console.log('Success:')
-            console.dir(data)
-            resolve(data);
-            console.log('end')
-        })
-        .catch(err => reject(err));
-  });
-}
-
-// need to determine if name, phone, or email change
-function updateMemberEBInfo(user: any) {
-  return new Promise((resolve, reject) => {
-    const startHour = user.starttime.includes('PM') ? parseInt(user.starttime.split(':')[0]) + 12 : parseInt(user.starttime.split(':')[0]);
-    const startMinute = parseInt(user.starttime.split(':')[1].split(' ')[0]);
-    const endHour = user.endtime.includes('PM') ? parseInt(user.endtime.split(':')[0]) + 12 : parseInt(user.endtime.split(':')[0]);
-    const endMinute = parseInt(user.endtime.split(':')[1].split(' ')[0]);
-    const updateOptions = {
-      method: 'PUT',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-        authorization: 'Basic ' + Buffer.from(`${EB_CREDS.username}:${EB_CREDS.password}`).toString('base64')
-      },
-      body: JSON.stringify({
-          firstName: user.name.split(' ')[0],
-          lastName: user.name.split(' ')[1],
-          recordTypeId: EB_CREDS.emp_id,
-          groupsName: [
-              'GIS-TEST-Water-Quality-Alerts'
-          ],
-          externalId: user.globalid,
-          paths: [
-              {
-                  waitTime: 0,
-                  pathId: EB_CREDS.sms_id,
-                  countryCode: 'US',
-                  value: !user.phonenumber || user.phonenumber === '' ? user.altphonenumber.replace(/\-/g, '') : user.phonenumber.replace(/\-/g,''),
-                  quietTimeFrames: [ // would depend on hours of operation
-                      {name: 'Hours of Operation', days: [1,2,3,4,5], fromHour: startHour, fromMin: startMinute, toHour: endHour, toMin: endMinute},
-                  ]
-              },
-              {
-                  waitTime: 0,
-                  pathId: EB_CREDS.email_id,
-                  countryCode: 'US',
-                  value: user.email,
-              }
-          ],
-          timezoneId: 'America/New_York'
-      })
-    }
-
-    fetch(`https://api.everbridge.net/rest/contacts/${EB_CREDS.organization_id}/${user.globalid}?idType=externalId`, updateOptions)
-        .then(response => response.json())
-        .then(data => {
-            console.log('Success:')
-            console.dir(data)
-            resolve(data);
-            console.log('end')
-        })
-        .catch(err => reject(err));
+    })
   })
 }
 
