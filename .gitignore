@@ -2,7 +2,7 @@ dist/
 node_modules/
 logs/
 package.json
-.env
+.env*
 package-lock.json
 wqimsAPI.crt
 wqimsAPI.csr
@@ -16,3 +16,6 @@ wqimsAPI.pfx
 .env_dev.txt
 .env_prd.txt
 .gitignore
+cert*
+package*
+private*
