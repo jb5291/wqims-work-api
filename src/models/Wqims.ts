@@ -92,7 +92,13 @@ class WqimsObject {
     });
 
     this.OBJECTID = addResponse.addResults[0].objectId;
-    return addResponse.addResults[0];
+    if("GLOBALID" in this) {
+      return { objectId: this.OBJECTID, success: addResponse.addResults[0].success, globalId: this.GLOBALID as string }
+    } else if("GROUPID" in this) {
+      return  { objectId: this.OBJECTID, success: addResponse.addResults[0].success, globalId: this.GROUPID as string };
+    } else {
+      return addResponse.addResults[0];
+    }
   }
 
   /**
