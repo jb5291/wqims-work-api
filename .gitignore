@@ -29,3 +29,10 @@ wqimsAPI.pfx
 /WQIMS.sln
 /WQIMS_TS_VS.esproj
 /WQIMS_TS_VS.esproj.user
+.env.txt
+certificate.crt
+certificate.csr
+certificate.pem
+certificate.pfx
+package.txt
+private.key
