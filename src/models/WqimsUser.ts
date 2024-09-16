@@ -262,50 +262,79 @@ class WqimsUser extends WqimsObject {
   async addEverbridgeContact() {
     const { hour: startHour, minute: startMinute } = parseTime(this.STARTTIME);
     const { hour: endHour, minute: endMinute } = parseTime(this.ENDTIME);
+    let options = {};
 
     this.PHONENUMBER = this.PHONENUMBER === "none" ? "" : this.PHONENUMBER;
 
-    const options = {
-      method: 'POST',
-      url: `${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}`,
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-        authorization: 'Basic ' + Buffer.from(`${authConfig.everbridge.username}:${authConfig.everbridge.password}`).toString('base64')
-      },
-      data: {
-        firstName: this.NAME.split(" ")[0],
-        lastName: this.NAME.split(" ")[1],
-        recordTypeId: parseInt(authConfig.everbridge.record_id),
-        groupsName: ["GIS-TEST-Water-Quality-Alerts"],
-        externalId: this.GLOBALID || "",
-        paths: [
-          {
-            waitTime: 0,
-            pathId: parseInt(authConfig.everbridge.sms_id),
-            countryCode: "US",
-            value: (this.PHONENUMBER || this.SECONDARYPHONENUMBER).replace(/-/g, ""),
-            quietTimeFrames: [
-              {
-                name: "Hours of Operation M-F",
-                days: [1, 2, 3, 4, 5],
-                fromHour: endHour,
-                fromMin: endMinute,
-                toHour: startHour,
-                toMin: startMinute,
-              },
-            ],
-          },
-          {
-            waitTime: 0,
-            pathId: parseInt(authConfig.everbridge.email_id),
-            countryCode: "US",
-            value: this.EMAIL,
-          },
-        ],
-        timezoneId: "America/New_York",
-      }
-    };
+    if (this.PHONENUMBER === "" && this.SECONDARYPHONENUMBER === "") {
+      options = {
+        method: 'POST',
+        url: `${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}`,
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          authorization: 'Basic ' + Buffer.from(`${authConfig.everbridge.username}:${authConfig.everbridge.password}`).toString('base64')
+        },
+        data: {
+          firstName: this.NAME.split(" ")[0],
+          lastName: this.NAME.split(" ")[1],
+          recordTypeId: parseInt(authConfig.everbridge.record_id),
+          groupsName: ["GIS-TEST-Water-Quality-Alerts"],
+          externalId: this.GLOBALID || "",
+          paths: [
+            {
+              waitTime: 0,
+              pathId: parseInt(authConfig.everbridge.email_id),
+              countryCode: "US",
+              value: this.EMAIL,
+            },
+          ],
+          timezoneId: "America/New_York",
+        }
+      };
+    } else {
+      options = {
+        method: 'POST',
+        url: `${authConfig.everbridge.rest_url}/contacts/${authConfig.everbridge.organization_id}`,
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          authorization: 'Basic ' + Buffer.from(`${authConfig.everbridge.username}:${authConfig.everbridge.password}`).toString('base64')
+        },
+        data: {
+          firstName: this.NAME.split(" ")[0],
+          lastName: this.NAME.split(" ")[1],
+          recordTypeId: parseInt(authConfig.everbridge.record_id),
+          groupsName: ["GIS-TEST-Water-Quality-Alerts"],
+          externalId: this.GLOBALID || "",
+          paths: [
+            {
+              waitTime: 0,
+              pathId: parseInt(authConfig.everbridge.sms_id),
+              countryCode: "US",
+              value: (this.PHONENUMBER || this.SECONDARYPHONENUMBER).replace(/-/g, ""),
+              quietTimeFrames: [
+                {
+                  name: "Hours of Operation M-F",
+                  days: [1, 2, 3, 4, 5],
+                  fromHour: endHour,
+                  fromMin: endMinute,
+                  toHour: startHour,
+                  toMin: startMinute,
+                },
+              ],
+            },
+            {
+              waitTime: 0,
+              pathId: parseInt(authConfig.everbridge.email_id),
+              countryCode: "US",
+              value: this.EMAIL,
+            },
+          ],
+          timezoneId: "America/New_York",
+        }
+      };
+    }
 
     axios.request(options)
         .then(response => console.log(response.data))
@@ -391,6 +420,7 @@ class WqimsUser extends WqimsObject {
  * @returns {{ hour: number, minute: number}} An object containing the hour and minute in 24-hour format.
  */
 function parseTime(time: string): { hour: number, minute: number } {
+  time = time || '12:00 AM';
   const [timePart, period] = time.split(' ');
   let [hour, minute] = timePart.split(':').map(Number);
   if (period === 'PM' && hour < 12) hour += 12;
