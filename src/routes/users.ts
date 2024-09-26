@@ -112,7 +112,7 @@ usersRouter.use(cookieParser());
 usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const getUserResult = await WqimsUser.getActiveFeatures();
-    res.json(getUserResult);
+    res.json(getUserResult.map((user) => user.attributes));
   } catch (error: unknown) {
     if(error instanceof Error) {
       appLogger.error("Users GET Error:", error.stack);
