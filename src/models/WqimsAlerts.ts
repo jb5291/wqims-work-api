@@ -104,7 +104,7 @@ class WqimsAlert extends WqimsObject {
       if ("features" in response) return response.features;
       throw new Error("Error getting data");
     } catch (error) {
-      appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
+      appLogger.error("Alerts GET Error:", error instanceof Error ? error.stack : "unknown error");
       throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
     }
   }

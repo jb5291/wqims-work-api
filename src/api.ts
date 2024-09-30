@@ -14,7 +14,7 @@ import groupsRouter from "./routes/groups";
 import usersRouter from "./routes/users";
 import thresholdsRouter from "./routes/thresholds";
 import alertsRouter from "./routes/alerts";
-// import checklistsRouter from "./routes/checklists"; TODO
+import checklistsRouter from "./routes/checklists";
 import { authRouter } from "./routes/auth";
 
 const app = express();
@@ -36,7 +36,7 @@ app.use("/notificationGroups", groupsRouter);
 app.use("/users", usersRouter);
 app.use("/thresholds", thresholdsRouter);
 app.use("/alerts", alertsRouter);
-// app.use("/checklists", checklistsRouter); TODO
+app.use("/checklists", checklistsRouter);
 app.use("/auth", authRouter);
 
 const swaggerOptions = {

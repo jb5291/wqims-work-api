@@ -28,7 +28,7 @@ usersRouter.use(cookieParser());
  *        STARTTIME: { type: string, nullable: true } // Start time of the user's shift
  *        ENDTIME: { type: string, nullable: true } // End time of the user's shift
  *        ACTIVE: { type: integer, nullable: true } // Active status of the user
- *    UserData: // Schema for user data
+ *    IUserData: // Schema for user data
  *      type: object
  *      properties:
  *        OBJECTID: { type: number } // Object ID of the user
@@ -84,7 +84,7 @@ usersRouter.use(cookieParser());
  *            properties:
  *              attributes:
  *                type: schema
- *                ref: '#/components/schemas/UserData' // Reference to UserData schema
+ *                ref: '#/components/schemas/IUserData' // Reference to IUserData schema
  */
 
 /**
@@ -143,7 +143,7 @@ usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  *        content:
  *          application/json:
  *            schema:
- *              $ref: '#/components/schemas/UserData'
+ *              $ref: '#/components/schemas/IUserData'
  *      '500':
  *        description: Internal Server Error
  *        content:
@@ -187,7 +187,7 @@ usersRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  *      content:
  *        application/json:
  *          schema:
- *            $ref: '#/components/schemas/UserData'
+ *            $ref: '#/components/schemas/IUserData'
  *    responses:
  *      '200':
  *        description: User deactivated successfully
@@ -243,7 +243,7 @@ usersRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  *      content:
  *        application/json:
  *          schema:
- *            $ref: '#/components/schemas/UserData'
+ *            $ref: '#/components/schemas/IUserData'
  *    responses:
  *      '200':
  *        description: User updated successfully
