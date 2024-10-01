@@ -86,12 +86,16 @@ export const authConfig = {
             thresholds: getEnvVal("WQIMS_THRESHOLDS_LYR_ID"),
             roles: getEnvVal("WQIMS_ROLES_LYR_ID"),
             groups: getEnvVal("WQIMS_GROUPS_LYR_ID"),
+            checklist_templates: getEnvVal("WQIMS_CHECKLIST_TEMPLATES_LYR_ID"),
+            checklist_items: getEnvVal("WQIMS_CHECKLIST_ITEMS_LYR_ID"),
+            
             users_groups: getEnvVal("WQIMS_USERS_GROUPS_LYR_ID"),
             users_roles: getEnvVal("WQIMS_USERS_ROLES_LYR_ID"),
             thresholds_groups: getEnvVal("WQIMS_THRESHOLDS_GROUPS_LYR_ID"),
             usergroups_rel_id: getEnvVal("WQIMS_USERGROUPS_REL_ID"),
             userroles_rel_id: getEnvVal("WQIMS_USERROLES_REL_ID"),
             thresholdsgroups_rel_id: getEnvVal("WQIMS_THRESHOLDGROUPS_REL_ID"),
+            templates_items_rel_id: getEnvVal("WQIMS_TEMPLATE_ITEMS_REL_ID"),
         },
     },
     everbridge: {

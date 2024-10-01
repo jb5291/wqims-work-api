@@ -14,36 +14,36 @@ const groupsRouter = express.Router();
  *    AssignThresholdData:
  *      type: object
  *      properties:
- *        thresholdId: { type: string, required: true } // ID of the threshold to be assigned
- *        GROUPIDs: { type: array, items: { type: string } } // Array of group IDs to which the threshold will be assigned
+ *        thresholdId: { type: string, required: true } 
+ *        GROUPIDs: { type: array, items: { type: string } } 
  *    AssignMemberData:
  *      type: object
  *      properties:
- *        memberId: { type: string, required: true } // ID of the member to be assigned
- *        GROUPIDs: { type: array, items: { type: string } } // Array of group IDs to which the member will be assigned
+ *        memberId: { type: string, required: true } 
+ *        GROUPIDs: { type: array, items: { type: string } } 
  *    AddGroupDataResult:
  *      type: object
  *      properties:
- *        OBJECTID: { type: number } // Object ID of the group
- *        GROUPNAME: { type: string } // Name of the group
- *        GROUPID: { type: string } // ID of the group
- *        ACTIVE: { type: integer, nullable: true } // Active status of the group
- *        MEMBERIDS: { type: array, items: { type: string } } // Array of member IDs in the group
- *        THRESHOLDIDS: { type: array, items: { type: string } } // Array of threshold IDs in the group
+ *        OBJECTID: { type: number } 
+ *        GROUPNAME: { type: string } 
+ *        GROUPID: { type: string } 
+ *        ACTIVE: { type: integer, nullable: true } 
+ *        MEMBERIDS: { type: array, items: { type: string } } 
+ *        THRESHOLDIDS: { type: array, items: { type: string } } 
  *    AddGroupData:
  *      type: object
  *      properties:
- *        GROUPNAME: { type: string } // Name of the group
- *        MEMBERIDS: { type: array, items: { type: string } } // Array of member IDs to be added to the group
- *        THRESHOLDIDS: { type: array, items: { type: string } } // Array of threshold IDs to be added to the group
- *        ACTIVE: { type: integer, nullable: true } // Active status of the group
+ *        GROUPNAME: { type: string } 
+ *        MEMBERIDS: { type: array, items: { type: string } } 
+ *        THRESHOLDIDS: { type: array, items: { type: string } } 
+ *        ACTIVE: { type: integer, nullable: true } 
  *    GroupData:
  *      type: object
  *      properties:
- *        OBJECTID: { type: number } // Object ID of the group
- *        GROUPNAME: { type: string } // Name of the group
- *        GROUPID: { type: string } // ID of the group
- *        ACTIVE: { type: integer, nullable: true } // Active status of the group
+ *        OBJECTID: { type: number } 
+ *        GROUPNAME: { type: string } 
+ *        GROUPID: { type: string } 
+ *        ACTIVE: { type: integer, nullable: true } 
  *    ArcGISEditFeatureResponse:
  *      type: object
  *      properties:
@@ -52,27 +52,27 @@ const groupsRouter = express.Router();
  *          items: {
  *            type: object,
  *            properties: {
- *              objectId: { type: number }, // Object ID of the added feature
- *              globalId: { type: string }, // Global ID of the added feature
- *              success: { type: boolean }, // Success status of the operation
+ *              objectId: { type: number }, 
+ *              globalId: { type: string }, 
+ *              success: { type: boolean }, 
  *              error: {
  *                type: object,
  *                properties: {
- *                  code: { type: number }, // Error code
- *                  description: { type: string } // Error description
+ *                  code: { type: number }, 
+ *                  description: { type: string } 
  *                }
  *              }
  *            }
  *          }
- *        } // Array of results from adding a feature
+ *        } 
  *    ArcGISGetGroupsResponse:
  *      type: object
  *      properties:
- *        objectIdFieldName: { type: string } // Field name for the object ID
- *        globalIdFieldName: { type: string } // Field name for the global ID
- *        hasZ: { type: boolean } // Indicates if the response has Z values
- *        hasM: { type: boolean } // Indicates if the response has M values
- *        fields: { type: array, items: { type: object, properties: { name: { type: string }, alias: { type: string }, type: { type: string }, length: { type: number } } } } // Array of field definitions
+ *        objectIdFieldName: { type: string } 
+ *        globalIdFieldName: { type: string } 
+ *        hasZ: { type: boolean } 
+ *        hasM: { type: boolean } 
+ *        fields: { type: array, items: { type: object, properties: { name: { type: string }, alias: { type: string }, type: { type: string }, length: { type: number } } } } 
  *        features: {
  *          type: array,
  *          items: {
@@ -84,7 +84,7 @@ const groupsRouter = express.Router();
  *              }
  *            }
  *          }
- *        } // Array of features
+ *        } 
  */
 
 /**

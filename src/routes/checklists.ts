@@ -5,6 +5,7 @@ import { WQIMS_DB_CONFIG } from '../util/secrets'
 import { appLogger, actionLogger } from '../util/appLogger'
 import { verifyAndRefreshToken, logRequest } from './auth';
 import WqimsChecklist from '../models/WqimsChecklist';
+import { WqimsObject } from '../models/Wqims';
 
 const checklistsRouter = express.Router();
 const dbConf = {
@@ -17,36 +18,86 @@ const dbConf = {
  * @swagger
  * components:
  *  schemas:
- *    checklistTemplate:
+ *    AddChecklistTemplate:
  *      type: object
  *      properties:
- *        OBJECTID:
- *          type: number
- *        GLOBALID:
- *          type: string
- *        TEMPLATE_NAME:
- *          type: string
- *        CREATED_AT:
- *          type: string
- *        UPDATED_AT:
- *          type: string
- *    checklistItem:
+ *        GLOBALID: { type: string }
+ *        TEMPLATE_NAME: { type: string }
+ *        CREATED_AT: { type: number }
+ *        UPDATED_AT: { type: number }
+ *    AddChecklistItem:
  *      type: object
  *      properties:
- *        OBJECTID:
- *          type: number
- *        GLOBALID:
- *          type: string
- *        TEMPLATE_ID:
- *          type: string
- *        DESCRIPTION:
- *          type: string
- *        ORDER_:
- *          type: number
- *        CREATED_AT:
- *          type: string
- *        UPDATED_AT:
- *          type: string
+ *        GLOBALID: { type: string }
+ *        TEMPLATE_ID: { type: string }
+ *        DESCRIPTION: { type: string }
+ *        ORDER_: { type: number }
+ *        CREATED_AT: { type: number }
+ *        UPDATED_AT: { type: number }
+ *        COMPLETED_BY: { type: string }
+ *        COMPLETED_AT: { type: number }
+ *        STATUS: { type: string }
+ *    IChecklistTemplate:
+ *      type: object
+ *      properties:
+ *        OBJECTID: { type: number }
+ *        GLOBALID: { type: string }
+ *        TEMPLATE_NAME: { type: string }
+ *        CREATED_AT: { type: number }
+ *        UPDATED_AT: { type: number }
+ *    IChecklistItem:
+ *      type: object
+ *      properties:
+ *        OBJECTID: { type: number }
+ *        GLOBALID: { type: string }
+ *        TEMPLATE_ID: { type: string }
+ *        DESCRIPTION: { type: string }
+ *        ORDER_: { type: number }
+ *        CREATED_AT: { type: number }
+ *        UPDATED_AT: { type: number }
+ *        COMPLETED_BY: { type: string }
+ *        COMPLETED_AT: { type: number }
+ *        STATUS: { type: string }
+ *    ArcGISEditFeatureResponse: 
+ *      type: object
+ *      properties:
+ *        addResults: 
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              objectId: { type: number } 
+ *              globalId: { type: string } 
+ *              success: { type: boolean } 
+ *              error:
+ *                type: object
+ *                properties:
+ *                  code: { type: number } 
+ *                  description: { type: string } 
+ *    ArcGISGetChecklistTemplatesResponse: 
+ *      type: object
+ *      properties:
+ *        objectIdFieldName: { type: string } 
+ *        globalIdFieldName: { type: string } 
+ *        hasZ: { type: boolean } 
+ *        hasM: { type: boolean } 
+ *        fields: 
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              name: { type: string } 
+ *              alias: { type: string } 
+ *              type: { type: string } 
+ *              length: { type: number } 
+ *        features: 
+ *          type: array
+ *          items:
+ *            type: object
+ *            properties:
+ *              attributes:
+ *                type: schema
+ *                ref: '#/components/schemas/IChecklistTemplate' 
  */
 
 /**
@@ -63,21 +114,19 @@ const dbConf = {
      *        content:
      *          application/json:
      *            schema:
-     *              type: object
-     *              items:
-     *                $ref: '#/components/schemas/checklistTemplate'
-     *      502:
-     *        description: Bad Gateway
+     *              $ref: '#/components/schemas/ArcGISGetChecklistTemplatesResponse'
+     *      500:
+     *        description: Internal Server Error
      *        content:
      *          application/json:
      *            schema:
      *              type: string
-     *              example: 'Bad Gateway: DB Connection Error'
+     *              example: 'Internal Server Error'
      */
-checklistsRouter.get('/', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
+checklistsRouter.get('/', verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const getChecklistResult = await WqimsChecklist.getActiveFeatures();
-    res.json(getChecklistResult);
+    res.json(getChecklistResult.map(f => f.attributes));
   } catch (error: unknown) {
     if(error instanceof Error) {
       appLogger.error("Checklists GET Error:", error.stack);
@@ -98,30 +147,39 @@ checklistsRouter.get('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
      *       required: true
      *       content:
      *         application/json:
-     *           schema:
-     *             type: object
-     *             properties:
-     *               checklistTemplate:
+     *           items:
+     *             templateName: { type: string }
      *     responses:
      *       200:
      *         description: Successfully created a new checklist template
-     *       502:
-     *         description: Bad Gateway
+     *         content:
+     *           application/json:
+     *             schema:
+     *               $ref: '#/components/schemas/IChecklistTemplate'
+     *       500:
+     *         description: Internal Server Error
      *         content:
      *           application/json:
      *             schema:
      *               type: string
-     *               example: 'Bad Gateway: DB Connection Error'
+     *               example: 'Internal Server Error'
      */
-checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
+checklistsRouter.put('/', verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
-    const timestamp = new Date();
-    const checklist = new WqimsChecklist(req.body, timestamp);
-    checklist.CREATED_AT = timestamp;
-    checklist.UPDATED_AT = timestamp;
+    const templateName = req.body.templateName;
+    const time = new Date().getTime();
 
-    const result = await checklist.addFeature();
-    res.json(result);
+    const result = await WqimsChecklist.addTemplateFeature(templateName, time);
+    if(!result.success) { throw new Error("Error creating checklist template"); }
+
+    const template = {
+      TEMPLATE_NAME: templateName,
+      OBJECTID: result.objectId,
+      GLOBALID: result.globalId,
+      CREATED_AT: time,
+      UPDATED_AT: time
+    }
+    res.json(template);
   } catch (error: unknown) {
     if(error instanceof Error) {
       appLogger.error("Checklists PUT Error:", error.stack);
@@ -129,6 +187,168 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
     }
   }
 });
+
+/**
+ * @swagger
+ * /checklists/{id}:
+ *   delete:
+ *     summary: Deletes a checklist template
+ *     description: Deletes a checklist template
+ *     tags:
+ *       - Checklists
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: integer
+ *         required: true
+ *         description: The id of the checklist template to Delete
+ *     responses:
+ *       200:
+ *         description: Successfully deleted the checklist template
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ArcGISEditFeatureResponse'
+ *       500:
+ *         description: Internal Server Error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: string
+ *               example: 'Internal Server Error'
+ */
+checklistsRouter.delete('/:id', verifyAndRefreshToken, logRequest, async (req, res) => {
+  // const checklist = new WqimsChecklist(req.body);
+  const id = req.params.id;
+  // const deleteItemsResult = await WqimsChecklist.removeRelationshipFromTemplate(parseInt(id));
+  // if(!deleteItemsResult.success) { throw new Error(deleteItemsResult.error?.description || "Error deleting checklist items"); }
+
+  const updateResult = await WqimsChecklist.deleteFeature(WqimsChecklist.featureUrl, parseInt(id));
+  if(!updateResult.success) { throw new Error(updateResult.error?.description || "Error deactivating checklist template"); }
+
+  res.json(updateResult);
+})
+
+/**
+ * @swagger
+ * /checklists:
+ *   patch:
+ *     summary: Update a checklist template
+ */
+
+/**
+ * @swagger
+ * /checklists/{id}:
+ *   get:
+ *     summary: Get all checklist items for a template
+ *     description: Get all checklist items for a template
+ *     tags:
+ *       - Checklists
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: integer
+ *         required: true
+ *         description: The object id of the checklist template to get items for
+ *     responses:
+ *       200:
+ *         description: A list of checklist items
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/IChecklistItem'
+ *       500:
+ *         description: Internal Server Error
+ */
+checklistsRouter.get('/:id', verifyAndRefreshToken, logRequest, async (req, res) => {
+  try {
+    const getChecklistItemsResult = await WqimsChecklist.getChecklistItems(parseInt(req.params.id));
+    res.json(getChecklistItemsResult.map(f => f.attributes));
+  } catch (error) {
+    if(error instanceof Error) {
+      appLogger.error("Checklists GET Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Checklists GET error" });
+    }
+  }
+})
+
+/**
+ * @swagger
+ * /checklists/items:
+ *   put:
+ *     summary: Create a new checklist item
+ *     description: Create a new checklist item
+ *     tags:
+ *       - Checklists
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/AddChecklistItem'
+ *     responses:
+ *       200:
+ *         description: Successfully created a new checklist item
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/IChecklistItem'
+ *       500:
+ *         description: Internal Server Error
+ */
+checklistsRouter.put('/items', verifyAndRefreshToken, logRequest, async (req, res) => {
+  const  checklistItem = new WqimsChecklist(req.body);
+  const timestamp = new Date();
+
+  checklistItem.CREATED_AT = timestamp;
+  checklistItem.UPDATED_AT = timestamp;
+
+  const result = await checklistItem.addItemFeature();
+  if(!result.success) { throw new Error(result.error?.description || "Error creating checklist item"); }
+  const { ACTIVE, featureUrl, ...checklistItemData } = checklistItem;
+  res.json(checklistItemData);
+});
+
+/**
+ * @swagger
+ * /checklists/items/{itemId}:
+ *   delete:
+ *     summary: Deletes a checklist item
+ *     description: Deletes a checklist item
+ *     tags:
+ *       - Checklists
+ *     parameters:
+ *       - in: path
+ *         name: itemId
+ *         schema:
+ *           type: integer
+ *         required: true
+ *         description: The id of the checklist item to Delete
+ *     responses:
+ *       200:
+ *         description: Successfully deleted the checklist item
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ArcGISEditFeatureResponse'
+ *       500:
+ *         description: Internal Server Error
+ */
+checklistsRouter.delete('/items/:itemId', verifyAndRefreshToken, logRequest, async (req, res) => {
+  try {
+    const updateResult = await WqimsChecklist.deleteFeature(WqimsChecklist.itemFeaturesUrl, parseInt(req.params.itemId));
+    if(!updateResult.success) { throw new Error(updateResult.error?.description || "Error deactivating checklist item"); }
+    res.json(updateResult);
+  } catch (error) {
+    if(error instanceof Error) {
+      appLogger.error("Checklists PUT Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Checklists PUT error" });
+    }
+  }
+});
+
 // OracleDB.createPool(dbConf)
 //   .then((pool) => {
 //     appLogger.info('connection pool created for checklists');
@@ -180,32 +400,7 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
 //       }
 //     })
 
-//     /**
-//      * @swagger
-//      * /checklists/{globalid}:
-//      *   delete:
-//      *     summary: Delete a checklist template
-//      *     description: Delete a checklist template
-//      *     tags:
-//      *       - Checklists
-//      *     parameters:
-//      *       - in: path
-//      *         name: globalid
-//      *         required: true
-//      *         description: Global ID of the checklist template to delete
-//      *         schema:
-//      *           type: string
-//      *     responses:
-//      *       200:
-//      *         description: Successfully deleted the checklist template
-//      *       502:
-//      *         description: Bad Gateway
-//      *         content:
-//      *           application/json:
-//      *             schema:
-//      *               type: string
-//      *               example: 'Bad Gateway: DB Connection Error'
-//      */
+
 //     checklistsRouter.delete('/:globalid', async (req, res) => {
 //       let connection: Connection | null = null;
 //       try {
@@ -230,41 +425,6 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
 //       }
 //     });
 
-//     /**
-//      * @swagger
-//      * /checklists/{globalid}:
-//      *   patch:
-//      *     summary: Update a checklist template
-//      *     description: Update a checklist template
-//      *     tags:
-//      *       - Checklists
-//      *     parameters:
-//      *       - in: path
-//      *         name: globalid
-//      *         required: true
-//      *         description: Global ID of the checklist template to update
-//      *         schema:
-//      *           type: string
-//      *     requestBody:
-//      *       required: true
-//      *       content:
-//      *         application/json:
-//      *           schema:
-//      *             type: object
-//      *             properties:
-//      *               TemplateName:
-//      *                 type: string
-//      *     responses:
-//      *       200:
-//      *         description: Successfully updated the checklist template
-//      *       502:
-//      *         description: Bad Gateway
-//      *         content:
-//      *           application/json:
-//      *             schema:
-//      *               type: string
-//      *               example: 'Bad Gateway: DB Connection Error'
-//      */
 //     checklistsRouter.patch('/:globalid', async (req, res) => {
 //       let connection: Connection | null = null;
 //       try {
@@ -290,38 +450,6 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
 //       }
 //     });
 
-//     /**
-//      * @swagger
-//      * /checklists/items/{templateid}:
-//      *  get:
-//      *    summary: Get all checklist items for a checklist template
-//      *    description: Get all checklist items for a checklist template
-//      *    tags:
-//      *      - Checklists
-//      *    parameters:
-//      *      - in: path
-//      *        name: templateid
-//      *        required: true
-//      *        description: Global ID of the checklist template
-//      *        schema:
-//      *          type: string
-//      *    responses:
-//      *      200:
-//      *        description: A list of checklist items
-//      *        content:
-//      *          application/json:
-//      *            schema:
-//      *              type: object
-//      *              items:
-//      *                $ref: '#/components/schemas/checklistItem'
-//      *      502:
-//      *        description: Bad Gateway
-//      *        content:
-//      *          application/json:
-//      *            schema:
-//      *              type: string
-//      *              example: 'Bad Gateway: DB Connection Error'
-//      */
 //     checklistsRouter.get('/items/:templateid', async (req, res) => {
 //       let connection: Connection | null = null;
 //       try {
@@ -345,43 +473,6 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
 //       }
 //     });
 
-//     /**
-//      * @swagger
-//      * /checklists/items/{templateid}:
-//      *   put:
-//      *     summary: Create a new checklist item
-//      *     description: Create a new checklist item
-//      *     tags:
-//      *       - Checklists
-//      *     parameters:
-//      *      - in: path
-//      *        name: templateid
-//      *        required: true
-//      *        description: Global ID of the checklist template
-//      *        schema:
-//      *          type: string
-//      *     requestBody:
-//      *       required: true
-//      *       content:
-//      *         application/json:
-//      *           schema:
-//      *             type: object
-//      *             properties:
-//      *               Description:
-//      *                 type: string
-//      *               Order:
-//      *                 type: number
-//      *     responses:
-//      *       200:
-//      *         description: Successfully created a new checklist template
-//      *       502:
-//      *         description: Bad Gateway
-//      *         content:
-//      *           application/json:
-//      *             schema:
-//      *               type: string
-//      *               example: 'Bad Gateway: DB Connection Error'
-//      */
 //     checklistsRouter.put('/items/:templateid', async (req, res) => {
 //       let connection: Connection | null = null;
 //       try {
@@ -410,38 +501,6 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
 //       }
 //     });
 
-//     /**
-//      * @swagger
-//      * /checklists/items/{templateid}/{globalid}:
-//      *   delete:
-//      *     summary: Delete a checklist item from a checklist template
-//      *     description: Delete a checklist item from a checklist template
-//      *     tags:
-//      *       - Checklists
-//      *     parameters:
-//      *       - in: path
-//      *         name: templateid
-//      *         required: true
-//      *         description: Global ID of the checklist template
-//      *         schema:
-//      *           type: string
-//      *       - in: path
-//      *         name: globalid
-//      *         required: true
-//      *         description: Global ID of the checklist item to delete
-//      *         schema:
-//      *           type: string
-//      *     responses:
-//      *       200:
-//      *         description: Successfully deleted the checklist item from the checklist template
-//      *       502:
-//      *         description: Bad Gateway
-//      *         content:
-//      *           application/json:
-//      *             schema:
-//      *               type: string
-//      *               example: 'Bad Gateway: DB Connection Error'
-//      */
 //     checklistsRouter.delete('/items/:templateid/:globalid', async (req, res) => {
 //       let connection: Connection | null = null;
 //       try {
@@ -465,50 +524,7 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
 //         }
 //       }
 //     });
-
-//     /**
-//      * @swagger
-//      * /checklists/items/{templateid}/{globalid}:
-//      *   patch:
-//      *     summary: Update a checklist item
-//      *     description: Update a checklist item
-//      *     tags:
-//      *       - Checklists
-//      *     parameters:
-//      *       - in: path
-//      *         name: globalid
-//      *         required: true
-//      *         description: Global ID of the checklist item to update
-//      *         schema:
-//      *           type: string
-//      *       - in: path
-//      *         name: templateid
-//      *         required: true
-//      *         description: Global ID of the checklist template
-//      *         schema:
-//      *           type: string
-//      *     requestBody:
-//      *       required: true
-//      *       content:
-//      *         application/json:
-//      *           schema:
-//      *             type: object
-//      *             properties:
-//      *               Description:
-//      *                 type: string
-//      *               Order:
-//      *                 type: number
-//      *     responses:
-//      *       200:
-//      *         description: Successfully updated the checklist item
-//      *       502:
-//      *         description: Bad Gateway
-//      *         content:
-//      *           application/json:
-//      *             schema:
-//      *               type: string
-//      *               example: 'Bad Gateway: DB Connection Error'
-//      */
+//    
 //     checklistsRouter.patch('/items/:templateid/:globalid', async (req, res) => {
 //       let connection: Connection | null = null;
 //       try {
@@ -534,22 +550,4 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
 //       }
 //     });
 //   });
-
-function getTimeStamp(): string {
-  const pad = (number: number, digits: any) => String(number).padStart(digits, '0');
-  const now = new Date();
-  // oracle timestamp format YYYY-MM-DD HH:MM:SS:FF AM/PM
-
-  const YYYY = now.getFullYear();
-  const MM = pad(now.getMonth() + 1, 2);
-  const DD = pad(now.getDate(), 2);
-  const hours24 = now.getHours();
-  const HH = pad(hours24 % 12 || 12, 2);
-  const mm = pad(now.getMinutes(), 2);
-  const ss = pad(now.getSeconds(), 2);
-  const ff = pad(now.getMilliseconds(), 3);
-  const ampm = hours24 < 12 ? 'AM' : 'PM';
-
-  return `${YYYY}-${MM}-${DD} ${HH}:${mm}:${ss}.${ff} ${ampm}`
-}
 export default checklistsRouter;

@@ -11,23 +11,23 @@ const thresholdsRouter = express.Router();
  * @swagger
  * components:
  *  schemas:
- *    AddThresholdData: // Schema for adding a new threshold
+ *    AddThresholdData: 
  *      type: object
  *      properties:
- *        LOCATION_CODE: { type: string } // Code of the location
- *        LOCATION_NAME: { type: string } // Name of the location
- *        PROJECT_NAME: { type: string } // Name of the project
- *        ANALYSIS: { type: string } // Analysis code being measured
- *        ANALYTE: { type: string } // Analyte being measured
- *        UPPER_LOWER_SPECS: { type: string } // Specifications for upper and lower limits
- *        SPECS_VALUE: { type: number } // Value of the specifications
- *        ACKTIMEOUT: { type: number } // Acknowledgment timeout
- *        CLOSEOUTTIMEOUT: { type: number } // Closeout timeout
- *        TEMPLATE_ID: { type: string } // ID of the template
- *        SYSTEM: { type: string } // System name
- *        ACTIVE: { type: number } // Active status
- *        UNIT: { type: string } // Unit of measurement
- *    ThresholdData: // Schema for threshold data
+ *        LOCATION_CODE: { type: string } 
+ *        LOCATION_NAME: { type: string } 
+ *        PROJECT_NAME: { type: string } 
+ *        ANALYSIS: { type: string } 
+ *        ANALYTE: { type: string } 
+ *        UPPER_LOWER_SPECS: { type: string } 
+ *        SPECS_VALUE: { type: number } 
+ *        ACKTIMEOUT: { type: number } 
+ *        CLOSEOUTTIMEOUT: { type: number } 
+ *        TEMPLATE_ID: { type: string } 
+ *        SYSTEM: { type: string } 
+ *        ACTIVE: { type: number } 
+ *        UNIT: { type: string } 
+ *    ThresholdData: 
  *      type: object
  *      properties:
  *        OBJECTID: { type: number }
@@ -45,46 +45,46 @@ const thresholdsRouter = express.Router();
  *        SYSTEM: { type: string }
  *        ACTIVE: { type: number }
  *        UNIT: { type: string }
- *    ArcGISEditFeatureResponse: // Schema for the response of editing a feature in ArcGIS
+ *    ArcGISEditFeatureResponse: 
  *      type: object
  *      properties:
- *        addResults: // Array of results from adding a feature
+ *        addResults: 
  *          type: array
  *          items:
  *            type: object
  *            properties:
- *              objectId: { type: number } // Object ID of the added feature
- *              globalId: { type: string } // Global ID of the added feature
- *              success: { type: boolean } // Success status of the operation
+ *              objectId: { type: number } 
+ *              globalId: { type: string } 
+ *              success: { type: boolean } 
  *              error:
  *                type: object
  *                properties:
- *                  code: { type: number } // Error code
- *                  description: { type: string } // Error description
- *    ArcGISGetThresholdsResponse: // Schema for the response of getting thresholds from ArcGIS
+ *                  code: { type: number } 
+ *                  description: { type: string } 
+ *    ArcGISGetThresholdsResponse: 
  *      type: object
  *      properties:
- *        objectIdFieldName: { type: string } // Field name for the object ID
- *        globalIdFieldName: { type: string } // Field name for the global ID
- *        hasZ: { type: boolean } // Indicates if the response has Z values
- *        hasM: { type: boolean } // Indicates if the response has M values
- *        fields: // Array of field definitions
+ *        objectIdFieldName: { type: string } 
+ *        globalIdFieldName: { type: string } 
+ *        hasZ: { type: boolean } 
+ *        hasM: { type: boolean } 
+ *        fields: 
  *          type: array
  *          items:
  *            type: object
  *            properties:
- *              name: { type: string } // Name of the field
- *              alias: { type: string } // Alias of the field
- *              type: { type: string } // Data type of the field
- *              length: { type: number } // Length of the field
- *        features: // Array of features
+ *              name: { type: string } 
+ *              alias: { type: string } 
+ *              type: { type: string } 
+ *              length: { type: number } 
+ *        features: 
  *          type: array
  *          items:
  *            type: object
  *            properties:
  *              attributes:
  *                type: schema
- *                $ref: '#/components/schemas/ThresholdData' // Reference to ThresholdData schema
+ *                $ref: '#/components/schemas/ThresholdData' 
  */
 
 /**
