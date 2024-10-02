@@ -1,10 +1,19 @@
-import { addFeatures, deleteFeatures, IEditFeatureResult, IFeature, IQueryRelatedOptions, IQueryRelatedResponse, IQueryResponse, queryFeatures, queryRelated } from "@esri/arcgis-rest-feature-service";
+import { addFeatures, deleteFeatures, IEditFeatureResult, IFeature, IQueryRelatedOptions, IQueryRelatedResponse, IQueryResponse, queryFeatures, queryRelated, updateFeatures } from "@esri/arcgis-rest-feature-service";
 import { gisCredentialManager } from "../routes/auth";
 import { authConfig } from "../util/secrets";
 import { WqimsObject } from "./Wqims";
 import { Request } from "express";
 import { appLogger } from "../util/appLogger";
 import { v4 as uuidv4 } from "uuid";
+
+export interface IChecklistTemplate {
+  OBJECTID: number;
+  GLOBALID: string;
+  TEMPLATE_NAME: string;
+  CREATED_AT: number;
+  UPDATED_AT: number;
+  items: WqimsChecklist[];
+}
 
 /**
  * Class representing a WqimsChecklist.
@@ -13,11 +22,11 @@ import { v4 as uuidv4 } from "uuid";
 class WqimsChecklist extends WqimsObject {
     DESCRIPTION!: string;
     ORDER_!: number;
-    CREATED_AT!: Date | null;
-    UPDATED_AT!: Date | null;
+    CREATED_AT!: number | null;
+    UPDATED_AT!: number | null;
     STATUS!: string;
     COMPLETED_BY!: string | null;
-    COMPLETED_AT!: Date | null;
+    COMPLETED_AT!: number | null;
     GLOBALID!: string | null;
     TEMPLATE_ID!: string | null;
 
@@ -121,7 +130,7 @@ class WqimsChecklist extends WqimsObject {
       throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist GET error"};
     }
   }
-
+  
   static async addTemplateFeature(templateName: string, creationTime: number): Promise<IEditFeatureResult> {
     try {
       const addResponse = await addFeatures({
@@ -146,26 +155,81 @@ class WqimsChecklist extends WqimsObject {
   }
 
   /**
+   * Updates a feature.
+   * @returns A promise that resolves to the result of the update operation.
+   */
+  static async updateTemplateFeature(template: Partial<IChecklistTemplate>): Promise<Partial<IChecklistTemplate>> {
+    try {
+      const updateResponse = await updateFeatures({
+        url: WqimsChecklist.featureUrl,
+        features: [
+          {
+            attributes: template
+          }
+        ],
+        authentication: gisCredentialManager,
+      });
+      if(updateResponse.updateResults[0].success) {
+        return template;
+      } else {
+        throw new Error("Error updating template");
+      }
+    } catch (error) {
+      appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
+    }
+  }
+
+  static async updateItemFeatures(items: WqimsChecklist[]): Promise<WqimsChecklist[]> {
+    try {
+      const itemJson = items.map(item => { 
+        const { ACTIVE, featureUrl, ...itemJson } = item;
+        return itemJson;
+      });
+      const featureJson = itemJson.map(item => ({attributes: item}));
+      const updateResponse = await updateFeatures({
+        url: WqimsChecklist.itemFeaturesUrl,
+        features: featureJson,
+        authentication: gisCredentialManager,
+      });
+      if(updateResponse.updateResults.every(result => result.success)) {
+        return items;
+      } else {
+        throw new Error("Error updating items");
+      }
+    } catch (error) {
+      appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
+    }
+  }
+
+  /**
    * Adds a new feature.
    * @returns A promise that resolves to the result of the add operation.
    */
   async addItemFeature(): Promise<IEditFeatureResult> {
-    this.GLOBALID = `{${uuidv4().toUpperCase()}}`;
-
-    const { OBJECTID, ACTIVE, featureUrl, ...objectWithoutOID } = this;
-    const addResponse = await addFeatures({
-      url: WqimsChecklist.itemFeaturesUrl,
-      features: [{ attributes: objectWithoutOID }],
-      authentication: gisCredentialManager,
-    });
-
-    this.OBJECTID = addResponse.addResults[0].objectId;
-    if("GLOBALID" in this) {
-      return { objectId: this.OBJECTID, success: addResponse.addResults[0].success, globalId: this.GLOBALID as string }
-    } else {
-      return addResponse.addResults[0];
+    try {
+      this.GLOBALID = `{${uuidv4().toUpperCase()}}`;
+  
+      const { OBJECTID, ACTIVE, featureUrl, ...objectWithoutOID } = this;
+      const addResponse = await addFeatures({
+        url: WqimsChecklist.itemFeaturesUrl,
+        features: [{ attributes: objectWithoutOID }],
+        authentication: gisCredentialManager,
+      });
+  
+      this.OBJECTID = addResponse.addResults[0].objectId;
+      if("GLOBALID" in this) {
+        return { objectId: this.OBJECTID, success: addResponse.addResults[0].success, globalId: this.GLOBALID as string }
+      } else {
+        return addResponse.addResults[0];
+      }
+    } catch (error) {
+      appLogger.error("Checklist POST Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist POST error"};
     }
   }
+
 }
 
 export default WqimsChecklist;
