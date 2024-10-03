@@ -6,13 +6,16 @@ import { Request } from "express";
 import { appLogger } from "../util/appLogger";
 import { v4 as uuidv4 } from "uuid";
 
-export interface IChecklistTemplate {
-  OBJECTID: number;
-  GLOBALID: string;
-  TEMPLATE_NAME: string;
-  CREATED_AT: number;
-  UPDATED_AT: number;
-  items: WqimsChecklist[];
+export interface IChecklistItem {
+  DESCRIPTION: string;
+  ORDER_: number;
+  CREATED_AT: number | null;
+  UPDATED_AT: number | null;
+  STATUS: string;
+  COMPLETED_BY: string | null;
+  COMPLETED_AT: number | null;
+  GLOBALID: string | null;
+  TEMPLATE_ID: string | null;
 }
 
 /**
@@ -20,30 +23,22 @@ export interface IChecklistTemplate {
  * @extends WqimsObject
  */
 class WqimsChecklist extends WqimsObject {
-    DESCRIPTION!: string;
-    ORDER_!: number;
-    CREATED_AT!: number | null;
-    UPDATED_AT!: number | null;
-    STATUS!: string;
-    COMPLETED_BY!: string | null;
-    COMPLETED_AT!: number | null;
-    GLOBALID!: string | null;
-    TEMPLATE_ID!: string | null;
+  GLOBALID!: string | null;
+  TEMPLATE_NAME!: string;
+  CREATED_AT!: number;
+  UPDATED_AT!: number;
+  items!: IChecklistItem[];
 
     constructor(body: Request["body"] | null, ...args: any[]) {
         super(body?.OBJECTID, body?.ACTIVE);
         Object.assign(this, body || {});
         if (!body) {
             [
-                this.DESCRIPTION,
-                this.ORDER_,
                 this.CREATED_AT,
                 this.UPDATED_AT,
-                this.STATUS,
-                this.COMPLETED_BY,
-                this.COMPLETED_AT,
                 this.GLOBALID,
-                this.TEMPLATE_ID
+                this.TEMPLATE_NAME,
+                this.items,
             ] = args;
         }
         this.featureUrl = WqimsChecklist.featureUrl;
@@ -69,7 +64,20 @@ class WqimsChecklist extends WqimsObject {
         outFields: "*",
         authentication: gisCredentialManager,
       });
-      if ("features" in response) return response.features;
+      if ("features" in response) {
+        const itemsResponse = await queryFeatures({
+          url: this.itemFeaturesUrl,
+          where: "1=1",
+          outFields: "*",
+          authentication: gisCredentialManager,
+        })
+        if ("features" in itemsResponse) {
+          response.features.map(template => template.attributes as WqimsChecklist).forEach(feature => {
+            feature.items = itemsResponse.features.map(item => item.attributes as IChecklistItem).filter(item => item.TEMPLATE_ID?.toUpperCase() === feature.GLOBALID?.toUpperCase());
+          });
+          return response.features;
+        }
+      } 
       throw new Error("Error getting data");
     } catch (error) {
         appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
@@ -158,7 +166,7 @@ class WqimsChecklist extends WqimsObject {
    * Updates a feature.
    * @returns A promise that resolves to the result of the update operation.
    */
-  static async updateTemplateFeature(template: Partial<IChecklistTemplate>): Promise<Partial<IChecklistTemplate>> {
+  static async updateTemplateFeature(template: Partial<WqimsChecklist>): Promise<Partial<WqimsChecklist>> {
     try {
       const updateResponse = await updateFeatures({
         url: WqimsChecklist.featureUrl,
@@ -200,6 +208,25 @@ class WqimsChecklist extends WqimsObject {
     } catch (error) {
       appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
       throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
+    }
+  }
+
+  static async addItemsToTemplate(items: WqimsChecklist[]): Promise<IEditFeatureResult[]> {
+    try {
+      const itemJson = items.map(item => { 
+        const { ACTIVE, featureUrl, ...itemJson } = item;
+        return itemJson;
+      });
+      const featureJson = itemJson.map(item => ({attributes: item}));
+      const addResponse = await addFeatures({
+        url: WqimsChecklist.itemFeaturesUrl,
+        features: featureJson,
+        authentication: gisCredentialManager,
+      });
+      return addResponse.addResults;
+    } catch (error) {
+      appLogger.error("Checklist POST Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist POST error"};
     }
   }
 

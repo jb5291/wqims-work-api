@@ -4,7 +4,7 @@ import OracleDB, { Connection} from 'oracledb'
 import { WQIMS_DB_CONFIG } from '../util/secrets'
 import { appLogger, actionLogger } from '../util/appLogger'
 import { verifyAndRefreshToken, logRequest } from './auth';
-import WqimsChecklist, { IChecklistTemplate } from '../models/WqimsChecklist';
+import WqimsChecklist, { IChecklistItem } from '../models/WqimsChecklist';
 
 const checklistsRouter = express.Router();
 
@@ -15,7 +15,7 @@ const checklistsRouter = express.Router();
  *    AddChecklistTemplate:
  *      type: object
  *      properties:
- *        GLOBALID: { type: string }
+ *        GLOBALID: { type: string     }
  *        TEMPLATE_NAME: { type: string }
  *        CREATED_AT: { type: number }
  *        UPDATED_AT: { type: number }
@@ -175,19 +175,18 @@ checklistsRouter.get('/', verifyAndRefreshToken, logRequest, async (req, res) =>
      */
 checklistsRouter.put('/', verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
-    const templateName = req.body.templateName;
+    const template = new WqimsChecklist(req.body);
     const time = new Date().getTime();
 
-    const result = await WqimsChecklist.addTemplateFeature(templateName, time);
+    const result = await WqimsChecklist.addTemplateFeature(template.TEMPLATE_NAME, time);
     if(!result.success) { throw new Error("Error creating checklist template"); }
 
-    const template = {
-      TEMPLATE_NAME: templateName,
-      OBJECTID: result.objectId,
-      GLOBALID: result.globalId,
-      CREATED_AT: time,
-      UPDATED_AT: time
+    if (template.items.length) {
+      const items = template.items.map(item => new WqimsChecklist(item));
+      const itemResults = await WqimsChecklist.addItemsToTemplate(items);
+      if(!itemResults) { throw new Error("Error creating checklist items"); }
     }
+
     res.json(template);
   } catch (error: unknown) {
     if(error instanceof Error) {
