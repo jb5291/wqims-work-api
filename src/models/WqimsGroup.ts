@@ -76,9 +76,16 @@ class WqimsGroup extends WqimsObject {
    * @returns A promise that resolves to the result of the add operation.
    */
   static async assignThresholds(GROUPIDs: string[], thresholdId: string): Promise<IEditFeatureResult> {
-    const features = GROUPIDs.map(id => ({ attributes: { GROUP_ID: id, THRSHLD_ID: thresholdId } }));
-    const result = await addFeatures({ url: this.thresholdsRelationshipClassUrl, authentication: gisCredentialManager, features });
-    return result.addResults[0];
+    try {
+      const features = GROUPIDs.map(id => ({ attributes: { GROUP_ID: id, THRSHLD_ID: thresholdId } }));
+      
+      const result = await addFeatures({ url: this.thresholdsRelationshipClassUrl, authentication: gisCredentialManager, features });
+      
+      if(!result.addResults[0].success) throw new Error("Add failed");
+      return result.addResults[0];
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }
 
   /**
@@ -88,9 +95,14 @@ class WqimsGroup extends WqimsObject {
    * @returns A promise that resolves to the result of the add operation.
    */
   static async assignMembers(GROUPIDs: string[], userId: string): Promise<IEditFeatureResult> {
-    const features = GROUPIDs.map(id => ({ attributes: { GROUP_ID: id, USER_ID: userId } }));
-    const result = await addFeatures({ url: this.usersRelationshipClassUrl, authentication: gisCredentialManager, features });
-    return result.addResults[0];
+    try {
+      const features = GROUPIDs.map(id => ({ attributes: { GROUP_ID: id, USER_ID: userId } }));
+      const result = await addFeatures({ url: this.usersRelationshipClassUrl, authentication: gisCredentialManager, features });
+      if(!result.addResults[0].success) throw new Error("Add failed");
+      return result.addResults[0];
+    } catch (error) {
+      return Promise.reject(error);
+    }
   }
 
   /**
@@ -100,10 +112,14 @@ class WqimsGroup extends WqimsObject {
    */
   static async assignItemsToGroup(response: IFeature[]): Promise<WqimsGroup[]> {
     return Promise.all(response.map(async groupFeature => {
-      const group = new WqimsGroup(groupFeature.attributes);
-      group.MEMBERS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.usergroups_rel_id)).then(items => items.map(item => new WqimsUser(item.attributes)));
-      group.THRESHOLDS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id)).then(items => items.map(item => new WqimsThreshold(item.attributes)));
-      return group;
+      try { 
+        const group = new WqimsGroup(groupFeature.attributes);
+        group.MEMBERS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.usergroups_rel_id)).then(items => items.map(item => new WqimsUser(item.attributes)));
+        group.THRESHOLDS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id)).then(items => items.map(item => new WqimsThreshold(item.attributes)));
+        return Promise.resolve(group);
+      } catch (error) {
+        return Promise.reject(error);
+      }
     }));
   }
 
@@ -132,6 +148,10 @@ class WqimsGroup extends WqimsObject {
   async updateFeature(): Promise<IEditFeatureResult> {
     const { MEMBERS, THRESHOLDS, ...groupWithoutItems } = this;
     const response = await updateFeatures({ url: this.featureUrl, features: [{ attributes: groupWithoutItems }], authentication: gisCredentialManager });
+    if (!response.updateResults[0].success) { 
+      console.log(response.updateResults[0])
+      return Promise.reject(response.updateResults[0].error?.description); 
+    }
     return response.updateResults[0];
   }
 
@@ -143,6 +163,7 @@ class WqimsGroup extends WqimsObject {
     this.ACTIVE = 0;
     const { MEMBERS, THRESHOLDS, ...groupWithoutItems } = this;
     const response = await updateFeatures({ url: this.featureUrl, features: [{ attributes: groupWithoutItems }], authentication: gisCredentialManager });
+    if(!response.updateResults[0].success) return Promise.reject(response.updateResults[0].error?.description);
     return response.updateResults[0];
   }
 
@@ -156,6 +177,7 @@ class WqimsGroup extends WqimsObject {
     const ids = items.map(feature => feature.GLOBALID);
     const features = ids.map(id => ({ attributes: { GROUP_ID: this.GROUPID, [relClassUrl === WqimsGroup.thresholdsRelationshipClassUrl ? 'THRSHLD_ID' : 'USER_ID']: id } }));
     const result = await addFeatures({ url: relClassUrl, authentication: gisCredentialManager, features });
+    if(!result.addResults[0].success) return Promise.reject(result.addResults[0].error?.description);
     return result.addResults[0];
   }
 
@@ -172,12 +194,18 @@ class WqimsGroup extends WqimsObject {
     } else {
       whereClause = `GROUP_ID='${this.GROUPID}' AND USER_ID IN ('${items.map(feature=>feature.GLOBALID).join("','")}')`;
     }
-    const queryResult = await queryFeatures({ url: relClassUrl, where: whereClause, returnIdsOnly: true, authentication: gisCredentialManager }) as IQueryResponse;
-    if (queryResult.objectIds?.length) {
-      const deleteResult = await deleteFeatures({ url: relClassUrl, objectIds: queryResult.objectIds, authentication: gisCredentialManager });
-      return deleteResult.deleteResults[0];
+    try {
+      const queryResult = await queryFeatures({ url: relClassUrl, where: whereClause, returnIdsOnly: true, authentication: gisCredentialManager }) as IQueryResponse;
+      if (queryResult.objectIds?.length) {
+        const deleteResult = await deleteFeatures({ url: relClassUrl, objectIds: queryResult.objectIds, authentication: gisCredentialManager });
+        if(!deleteResult.deleteResults[0].success) return Promise.reject(deleteResult.deleteResults[0].error?.description);
+        return deleteResult.deleteResults[0];
+      }
+      return Promise.reject(queryResult.objectIds?.length === 0 ? "No relationships found" : "Invalid relationship class URL" );
+    } catch (error) {
+      return Promise.reject(error);
     }
-    return { objectId: -1, success: queryResult.objectIds?.length === 0, error: { code: 999, description: queryResult.objectIds?.length === 0 ? "No relationships found" : "Invalid relationship class URL" } };
+    
   }
 
   /**
@@ -191,8 +219,8 @@ class WqimsGroup extends WqimsObject {
       const response = await queryRelated({ url: this.featureUrl, objectIds: [this.objectId], relationshipId, outFields: "*", authentication: gisCredentialManager });
       return response.relatedRecordGroups?.[0]?.relatedRecords ?? [];
     } catch (error) {
-      appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
+      appLogger.error("Group GET Error:", error instanceof Error ? error.stack : "unknown error");
+      return Promise.reject({ error: error instanceof Error ? error.message : "unknown error", message: "Group GET error" });
     }
   }
 }

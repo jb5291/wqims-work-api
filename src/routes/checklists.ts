@@ -182,8 +182,7 @@ checklistsRouter.put('/', verifyAndRefreshToken, logRequest, async (req, res) =>
     if(!result.success) { throw new Error("Error creating checklist template"); }
 
     if (template.items.length) {
-      const items = template.items.map(item => new WqimsChecklist(item));
-      const itemResults = await WqimsChecklist.addItemsToTemplate(items);
+      const itemResults = await WqimsChecklist.addItemsToTemplate(template.items as IChecklistItem[]);
       if(!itemResults) { throw new Error("Error creating checklist items"); }
     }
 
@@ -276,9 +275,9 @@ checklistsRouter.patch('/', verifyAndRefreshToken, logRequest, async (req, res) 
     const itemsToDelete = itemChanges.delete;
     const itemsToAdd = itemChanges.add;
     const itemsToUpdate = itemChanges.update;
-    let itemUpdatesResults: WqimsChecklist[] = [];
-    let itemAddResults: WqimsChecklist[] = [];
-    let itemDeleteResults: WqimsChecklist[] = [];
+    let itemUpdatesResults: IChecklistItem[] = [];
+    let itemAddResults: IChecklistItem[] = [];
+    let itemDeleteResults: IChecklistItem[] = [];
 
     checklistTemplate.UPDATED_AT = timestamp;
 
@@ -292,16 +291,12 @@ checklistsRouter.patch('/', verifyAndRefreshToken, logRequest, async (req, res) 
     }
 
     if (itemsToUpdate.length) {
-      itemUpdatesResults = await WqimsChecklist.updateItemFeatures(itemsToUpdate.map((item: WqimsChecklist) => {
-        item.UPDATED_AT = timestamp;
-        return new WqimsChecklist(item)
-      }));
+      itemUpdatesResults = await WqimsChecklist.updateItemFeatures(itemsToUpdate);
       if(!itemUpdatesResults) { throw new Error("Error updating checklist items"); }
     }
 
     res.json({...templateResult, items: itemUpdatesResults.map(item => {
-      const { ACTIVE, featureUrl, ...itemResultsData } = item;
-      return itemResultsData;
+      return { ...item }
     })});
   } catch (error) {
     if(error instanceof Error) {

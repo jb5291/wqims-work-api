@@ -4,6 +4,7 @@ import {
   deleteFeatures,
   IEditFeatureResult,
   IFeature, IQueryFeaturesResponse,
+  IQueryRelatedResponse,
   IQueryResponse,
   IRelatedRecordGroup,
   queryFeatures,
@@ -114,19 +115,23 @@ class WqimsUser extends WqimsObject {
    * @returns {Promise<IEditFeatureResult>} The result of the feature update operation.
    */
   async checkInactive(): Promise<IEditFeatureResult> {
-    const response = await queryFeatures({
-      url: this.featureUrl,
-      where: `ACTIVE=0 AND EMAIL='${this.EMAIL}'`,
-      authentication: gisCredentialManager,
-    }) as IQueryFeaturesResponse;
-
-    this.PHONENUMBER = this.PHONENUMBER || "none";
-
-    if (response.features?.length) {
-      this.GLOBALID = response.features[0].attributes.GLOBALID;
+    try {
+      const response = await queryFeatures({
+        url: this.featureUrl,
+        where: `ACTIVE=0 AND EMAIL='${this.EMAIL}'`,
+        authentication: gisCredentialManager,
+      }) as IQueryFeaturesResponse;
+  
+      this.PHONENUMBER = this.PHONENUMBER || "none";
+  
+      if (response.features?.length) {
+        this.GLOBALID = response.features[0].attributes.GLOBALID;
+      }
+  
+      return this.reactivateFeature(response);
+    } catch (error) {
+      return Promise.reject(error);
     }
-
-    return this.reactivateFeature(response);
   }
 
   /**
@@ -135,17 +140,21 @@ class WqimsUser extends WqimsObject {
    * @throws Will throw if no features are found in the response.
    */
   async getRoleIds(): Promise<WqimsRole[]> {
-    const response = await queryFeatures({
-      url: WqimsUser.rolesUrl,
-      where: "1=1",
-      outFields: "*",
-      authentication: gisCredentialManager,
-    }) as IQueryFeaturesResponse;
-
-    if (response.features) {
-      return response.features.map((feature: IFeature) => feature.attributes as WqimsRole);
-    } else {
-      throw new Error("No features found");
+    try {
+      const response = await queryFeatures({
+        url: WqimsUser.rolesUrl,
+        where: "1=1",
+        outFields: "*",
+        authentication: gisCredentialManager,
+      }) as IQueryFeaturesResponse;
+  
+      if (response.features.length) {
+        return response.features.map((feature: IFeature) => feature.attributes as WqimsRole);
+      } else {
+        throw new Error("No features found");
+      }
+    } catch (error) {
+      return Promise.reject(error);
     }
   }
 
@@ -156,18 +165,23 @@ class WqimsUser extends WqimsObject {
    */
   async updateUserRole(): Promise<IEditFeatureResult | undefined> {
     const objectId: number = this.OBJECTID || 0;
+    let response: IQueryRelatedResponse;
     const allowedRoles: string[] = ["Admin", "Editor", "Viewer"];
-    if (!allowedRoles.includes(this.ROLE)) {
-      return Promise.reject("Invalid role");
-    }
+    try {
+      if (!allowedRoles.includes(this.ROLE)) {
+        throw new Error("Invalid role");
+      }
 
-    const response = await queryRelated({
-      url: this.featureUrl,
-      objectIds: [this.objectId],
-      outFields: ["*"],
-      relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
-      authentication: gisCredentialManager,
-    });
+      response = await queryRelated({
+        url: this.featureUrl,
+        objectIds: [this.objectId],
+        outFields: ["*"],
+        relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
+        authentication: gisCredentialManager,
+      });
+    } catch (error) {
+      return Promise.reject(error);
+    }
 
     const roles: WqimsRole[] = await this.getRoleIds();
     const relatedRecordGroup: IRelatedRecordGroup = response.relatedRecordGroups?.[0];
@@ -176,49 +190,74 @@ class WqimsUser extends WqimsObject {
     if (relatedRecord?.attributes.ROLE === this.ROLE.toLowerCase()) {
       return { objectId, success: true };
     }
+    let userRolesQueryResponse: IQueryFeaturesResponse;
 
-    const userRolesQueryResponse = await queryFeatures({
-      url: WqimsUser.rolesRelationshipClassUrl,
-      where: `USER_ID='${this.GLOBALID}'`,
-      outFields: "*",
-      authentication: gisCredentialManager,
-    }) as IQueryFeaturesResponse;
-
-    if (userRolesQueryResponse.features?.length) {
-      const rid = userRolesQueryResponse.features[0].attributes.RID;
-      if (!rid) {
-        return Promise.reject("No related records found in related record group.");
-      }
-      const userRolesUpdateResponse = await updateFeatures({
+    try {
+      userRolesQueryResponse = await queryFeatures({
         url: WqimsUser.rolesRelationshipClassUrl,
-        features: [
-          {
-            attributes: {
-              RID: rid,
-              USER_ID: this.GLOBALID,
-              ROLE_ID: roles.find((role: WqimsRole) => role.ROLE === this.ROLE.toLowerCase())?.GLOBALID,
-            },
-          },
-        ],
+        where: `USER_ID='${this.GLOBALID}'`,
+        outFields: "*",
         authentication: gisCredentialManager,
-      });
+      }) as IQueryFeaturesResponse;
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    if (userRolesQueryResponse.features?.length) {
+      let rid = null;
+      let userRolesUpdateResponse;
 
-      if (userRolesUpdateResponse.updateResults[0].success) {
-        return userRolesUpdateResponse.updateResults[0];
+      try {
+        rid = userRolesQueryResponse.features[0].attributes?.RID;
+        if(!rid) { throw new Error("No RID found"); }
+      } catch (error) {
+        return Promise.reject(error);
+      }
+
+      try {
+        userRolesUpdateResponse = await updateFeatures({
+          url: WqimsUser.rolesRelationshipClassUrl,
+          features: [
+            {
+              attributes: {
+                RID: rid,
+                USER_ID: this.GLOBALID,
+                ROLE_ID: roles.find((role: WqimsRole) => role.ROLE === this.ROLE.toLowerCase())?.GLOBALID,
+              },
+            },
+          ],
+          authentication: gisCredentialManager,
+        });
+      } catch (error) {
+        return Promise.reject(error);
+      }
+
+      try {
+        if (userRolesUpdateResponse.updateResults[0].success) {
+          return userRolesUpdateResponse.updateResults[0];
+        }
+        throw new Error("Update failed");
+      } catch (error) {
+        return Promise.reject(error);
       }
     } else {
-      const roleAddResponse = await addFeatures({
-        url: WqimsUser.rolesRelationshipClassUrl,
-        authentication: gisCredentialManager,
-        features: [
-          {
-            attributes: {
-              USER_ID: this.GLOBALID,
-              ROLE_ID: roles.find((role: WqimsRole) => role.ROLE === this.ROLE.toLowerCase())?.GLOBALID,
+      let roleAddResponse;
+      try {
+        roleAddResponse = await addFeatures({
+          url: WqimsUser.rolesRelationshipClassUrl,
+          authentication: gisCredentialManager,
+          features: [
+            {
+              attributes: {
+                USER_ID: this.GLOBALID,
+                ROLE_ID: roles.find((role: WqimsRole) => role.ROLE === this.ROLE.toLowerCase())?.GLOBALID,
+              },
             },
-          },
-        ],
-      });
+          ],
+        });
+      } catch (error) {
+        return Promise.reject(error);
+      }
+
       if (roleAddResponse.addResults[0].success) {
         return roleAddResponse.addResults[0];
       }
@@ -232,27 +271,31 @@ class WqimsUser extends WqimsObject {
    * @returns {Promise<IEditFeatureResult | undefined>} A promise that resolves to the result of the remove relationship operation.
    */
   async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult | undefined> {
-    const queryRelResponse = await queryFeatures({
-      url: relClassUrl,
-      where: `USER_ID='${this.GLOBALID}'`,
-      returnIdsOnly: true,
-      authentication: gisCredentialManager,
-    }) as IQueryResponse;
-
-    if (queryRelResponse.objectIds?.length) {
-      const deleteRelResponse = await deleteFeatures({
+    try {
+      const queryRelResponse = await queryFeatures({
         url: relClassUrl,
-        objectIds: queryRelResponse.objectIds,
+        where: `USER_ID='${this.GLOBALID}'`,
+        returnIdsOnly: true,
         authentication: gisCredentialManager,
-      });
-
-      if (deleteRelResponse.deleteResults[0].success) {
-        return deleteRelResponse.deleteResults[0];
+      }) as IQueryResponse;
+  
+      if (queryRelResponse.objectIds?.length) {
+        const deleteRelResponse = await deleteFeatures({
+          url: relClassUrl,
+          objectIds: queryRelResponse.objectIds,
+          authentication: gisCredentialManager,
+        });
+  
+        if (deleteRelResponse.deleteResults[0].success) {
+          return deleteRelResponse.deleteResults[0];
+        } else {
+          throw new Error("Delete failed");
+        }
       } else {
-        return Promise.reject(deleteRelResponse.deleteResults[0]?.error?.description);
+        return { objectId: this.OBJECTID || 0, success: true };
       }
-    } else {
-      return { objectId: this.OBJECTID || 0, success: true };
+    } catch (error) {
+      return Promise.reject(error);
     }
   }
 

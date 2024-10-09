@@ -80,8 +80,8 @@ class WqimsChecklist extends WqimsObject {
       } 
       throw new Error("Error getting data");
     } catch (error) {
-        appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
-        throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
+      appLogger.error("Checklist GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "Checklist GET error" };
     }
   }
 
@@ -89,6 +89,9 @@ class WqimsChecklist extends WqimsObject {
     try {
       const response = await queryRelated({
         url: WqimsChecklist.featureUrl,
+        params: {
+          where: `OBJECTID = ${templateId}`
+        },
         relationshipId: parseInt(authConfig.arcgis.layers.templates_items_rel_id),
         authentication: gisCredentialManager,
       }) as IQueryResponse;
@@ -157,8 +160,8 @@ class WqimsChecklist extends WqimsObject {
       });
       return addResponse.addResults[0];
     } catch (error) {
-      appLogger.error("Checklist POST Error:", error instanceof Error ? error.stack : "unknown error");
-      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist POST error"};
+      appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
     }
   }
 
@@ -183,21 +186,17 @@ class WqimsChecklist extends WqimsObject {
         throw new Error("Error updating template");
       }
     } catch (error) {
-      appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
-      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
+      appLogger.error("Checklist PATCH Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PATCH error"};
     }
   }
 
-  static async updateItemFeatures(items: WqimsChecklist[]): Promise<WqimsChecklist[]> {
+  static async updateItemFeatures(items: IChecklistItem[]): Promise<IChecklistItem[]> {
     try {
-      const itemJson = items.map(item => { 
-        const { ACTIVE, featureUrl, ...itemJson } = item;
-        return itemJson;
-      });
-      const featureJson = itemJson.map(item => ({attributes: item}));
+      // const featureJson = itemJson.map(item => ({attributes: item}));
       const updateResponse = await updateFeatures({
         url: WqimsChecklist.itemFeaturesUrl,
-        features: featureJson,
+        features: items.map(item => ({attributes: item})),
         authentication: gisCredentialManager,
       });
       if(updateResponse.updateResults.every(result => result.success)) {
@@ -206,27 +205,26 @@ class WqimsChecklist extends WqimsObject {
         throw new Error("Error updating items");
       }
     } catch (error) {
-      appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
-      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
+      appLogger.error("Checklist PATCH Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PATCH error"};
     }
   }
 
-  static async addItemsToTemplate(items: WqimsChecklist[]): Promise<IEditFeatureResult[]> {
+  static async addItemsToTemplate(items: IChecklistItem[]): Promise<IEditFeatureResult[]> {
     try {
-      const itemJson = items.map(item => { 
-        const { ACTIVE, featureUrl, ...itemJson } = item;
-        return itemJson;
-      });
-      const featureJson = itemJson.map(item => ({attributes: item}));
+      const featureJson = items.map(item => ({attributes: item}));
       const addResponse = await addFeatures({
         url: WqimsChecklist.itemFeaturesUrl,
         features: featureJson,
         authentication: gisCredentialManager,
       });
-      return addResponse.addResults;
+      if(addResponse.addResults.every(result => result.success)) {
+        return addResponse.addResults;
+      }
+      throw new Error("Error adding items");
     } catch (error) {
-      appLogger.error("Checklist POST Error:", error instanceof Error ? error.stack : "unknown error");
-      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist POST error"};
+      appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
     }
   }
 
@@ -244,16 +242,19 @@ class WqimsChecklist extends WqimsObject {
         features: [{ attributes: objectWithoutOID }],
         authentication: gisCredentialManager,
       });
-  
-      this.OBJECTID = addResponse.addResults[0].objectId;
-      if("GLOBALID" in this) {
-        return { objectId: this.OBJECTID, success: addResponse.addResults[0].success, globalId: this.GLOBALID as string }
+      if(addResponse.addResults[0].success) {
+        this.OBJECTID = addResponse.addResults[0].objectId;
+        if("GLOBALID" in this) {
+          return { objectId: this.OBJECTID, success: addResponse.addResults[0].success, globalId: this.GLOBALID as string }
+        } else {
+          return addResponse.addResults[0];
+        }
       } else {
-        return addResponse.addResults[0];
+        throw new Error("Error adding item");
       }
     } catch (error) {
-      appLogger.error("Checklist POST Error:", error instanceof Error ? error.stack : "unknown error");
-      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist POST error"};
+      appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
     }
   }
 

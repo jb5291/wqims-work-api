@@ -101,26 +101,38 @@ class WqimsThreshold extends WqimsObject {
    * @returns {Promise<IEditFeatureResult | undefined>} A promise that resolves to the result of the remove relationship operation.
    */
   async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult | undefined> {
-    const queryRelResponse = await queryFeatures({
-      url: relClassUrl,
-      where: `THRSHLD_ID='${this.GLOBALID}'`,
-      returnIdsOnly: true,
-      authentication: gisCredentialManager,
-    }) as IQueryResponse;
-
-    if (queryRelResponse.objectIds?.length) {
-      const deleteRelResponse = await deleteFeatures({
+    let queryRelResponse: IQueryResponse;
+    try { 
+      queryRelResponse = await queryFeatures({
         url: relClassUrl,
-        objectIds: queryRelResponse.objectIds,
+        where: `THRSHLD_ID='${this.GLOBALID}'`,
+        returnIdsOnly: true,
         authentication: gisCredentialManager,
       });
+    } catch (error) {
+      return Promise.reject(error);
+    }
+
+    if (queryRelResponse.objectIds?.length) {
+      let deleteRelResponse: { deleteResults: IEditFeatureResult[] };
+      try {
+        deleteRelResponse = await deleteFeatures({
+          url: relClassUrl,
+          objectIds: queryRelResponse.objectIds,
+          authentication: gisCredentialManager,
+        });
+      } catch (error) {
+        return Promise.reject(error);
+      }
 
       if (deleteRelResponse.deleteResults[0].success) {
         return deleteRelResponse.deleteResults[0];
       } else {
+        console.log(deleteRelResponse.deleteResults[0]);
         return Promise.reject(deleteRelResponse.deleteResults[0]?.error?.description);
       }
     } else {
+      // No related records found for the threshold
       return { objectId: this.OBJECTID || 0, success: true };
     }
   }
