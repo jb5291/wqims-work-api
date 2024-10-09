@@ -92,6 +92,32 @@ class TokenValidator {
         return issCheck && audCheck && expCheck && scpCheck;
     }
 
+    static async identifyUser(rawAccessToken: string): Promise<string | null> {
+        if (!rawAccessToken) {
+            return null;
+        }
+        try {
+            const decodedToken = jwt.decode(rawAccessToken, { complete: true });
+
+            if (!decodedToken) {
+                throw new Error("Invalid token");
+            }
+            if("payload" in decodedToken) {
+                const tokenPayload: string | JWTPayload = decodedToken.payload;
+                if (typeof tokenPayload === "object") {
+                    if ("upn" in tokenPayload && tokenPayload.upn) {
+                        return tokenPayload.upn as string;
+                    }
+                }
+            } 
+            return null
+        } catch (error) {
+            console.log(error);
+            return null;
+        }
+
+    }
+
     /**
      * Fetches signing keys from the openid-configuration endpoint
      * @param {Object} header: token header

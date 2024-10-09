@@ -13,6 +13,7 @@ import { appLogger, actionLogger } from "../util/appLogger";
 import { authConfig, BASEURL, FE_FULL_URL, PROXY_LISTEN_PORT } from "../util/secrets";
 import TokenValidator from "../util/tokenValidator";
 import { default as graph } from "../util/graph";
+import session from "express-session";
 
 /**
  * Express router for authentication-related routes.
@@ -46,21 +47,48 @@ authRouter.post("/login", (req: Request, res: Response) => {
 authRouter.get("/callback", async (req: Request, res: Response) => {
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
   try {
-    const response: AuthenticationResult = await graph.cca.acquireTokenByCode({
-      code: req.query.code as string,
-      redirectUri: authConfig.msal.redirectUri,
-      scopes: [`${authConfig.msal.graphEndpoint}/.default`],
-    });
+    const accounts = await graph.cca.getTokenCache().getAllAccounts();
+    const userHomeAcctId = await getUserSessionFromToken(req.cookies["token"]);
 
+    let response!: AuthenticationResult;
+    // check if user is token is in MSAL cache
+    if(accounts.length > 0 && userHomeAcctId && accounts.some(account => account.homeAccountId === userHomeAcctId)) {
+      
+      const account = accounts.find(account => account.homeAccountId === userHomeAcctId);
+      if (account) {
+        const silentRequest = {
+          account: account,
+          scopes: [`${authConfig.msal.graphEndpoint}/.default`]
+        }
+
+        response = await graph.cca.acquireTokenSilent(silentRequest);
+
+        if (response && "accessToken" in response && response.accessToken) {
+          console.log("Token acquired silently");
+        }
+      }
+    } else {
+      response = await graph.cca.acquireTokenByCode({
+        code: req.query.code as string,
+        redirectUri: authConfig.msal.redirectUri,
+        scopes: [`${authConfig.msal.graphEndpoint}/.default`],
+      });
+
+    }
     if (await tokenValidator.validateMSAccessTokenClaims(response.accessToken)) {
       graph.initGraphClient(response.accessToken);
       const user = await graph.getUserDetails();
       const userId = await getUserId(user.mail);
       const encodedSecret = base64url.decode(authConfig.jwt_secret_key);
+      const userSession = {
+        [response.account?.homeAccountId as string]: {
+          upn: user.userPrincipalName,
+        }
+      }
 
       const jwtToken = await createJWT({ userId, homeAccountId: response.account?.homeAccountId }, encodedSecret, "15m");
       const refreshToken = await createJWT({ userId, homeAccountId: response.account?.homeAccountId }, encodedSecret, "7d");
-
+      
       res.cookie("token", jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
       res.cookie("refreshToken", refreshToken, { httpOnly: true, secure: true, sameSite: "none" });
       actionLogger.info("User logged in", { id: user.mail, ip });
@@ -328,6 +356,17 @@ function handleTokenError(error: any, req: Request, res: Response, next: NextFun
   } else {
     appLogger.error(error);
     res.status(403).send("Unauthorized");
+  }
+}
+
+async function getUserSessionFromToken(token: string): Promise<unknown> {
+  try {
+    const encodedSecret = base64url.decode(authConfig.jwt_secret_key);
+    const { payload } = await jwtDecrypt(token, encodedSecret);
+    return payload.homeAccountId;
+  } catch (error) {
+    appLogger.error(error);
+    return null;
   }
 }
 
