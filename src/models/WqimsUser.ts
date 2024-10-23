@@ -167,10 +167,10 @@ class WqimsUser extends WqimsObject {
     const objectId: number = this.OBJECTID || 0;
     let response: IQueryRelatedResponse;
     const allowedRoles: string[] = ["Admin", "Editor", "Viewer"];
-    try {
-      if (!allowedRoles.includes(this.ROLE)) {
-        throw new Error("Invalid role");
-      }
+    const userRole = this.ROLE === "Administrator" ? "Admin" : this.ROLE;
+    if (!allowedRoles.includes(userRole)) {
+      return Promise.reject("Invalid role");
+    }
 
       response = await queryRelated({
         url: this.featureUrl,

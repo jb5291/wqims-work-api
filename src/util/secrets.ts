@@ -95,7 +95,7 @@ export const authConfig = {
             usergroups_rel_id: getEnvVal("WQIMS_USERGROUPS_REL_ID"),
             userroles_rel_id: getEnvVal("WQIMS_USERROLES_REL_ID"),
             thresholdsgroups_rel_id: getEnvVal("WQIMS_THRESHOLDGROUPS_REL_ID"),
-            templates_items_rel_id: getEnvVal("WQIMS_TEMPLATE_ITEMS_REL_ID"),
+            templates_items_rel_id: getEnvVal("WQIMS_TEMPLATES_ITEMS_REL_ID"),
         },
     },
     everbridge: {

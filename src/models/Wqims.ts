@@ -46,8 +46,8 @@ class WqimsObject {
       if ("features" in response) return response.features;
       throw new Error("Error getting data");
     } catch (error) {
-      appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
+      appLogger.error("GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET error" };
     }
   }
 
@@ -80,9 +80,9 @@ class WqimsObject {
    * @returns A promise that resolves to the result of the add operation.
    */
   async addFeature(): Promise<IEditFeatureResult> {
-    if ("GLOBALID" in this) this.GLOBALID = `{${uuidv4().toUpperCase()}}`;
+    if ("globalId" in this) this.globalId = `{${uuidv4().toUpperCase()}}`;
     else if ("GROUPID" in this) this.GROUPID = `{${uuidv4().toUpperCase()}}`;
-    this.ACTIVE = 1;
+    this.active = 1;
 
     const { OBJECTID, ...objectWithoutOID } = this;
     const addResponse = await addFeatures({
@@ -149,6 +149,24 @@ class WqimsObject {
       return updateResponse.updateResults[0];
     } else {
       return { objectId: -1, success: false, error: { code: 999, description: "No inactive record found" } };
+    }
+  }
+
+  static async getUser(userId: number): Promise<IFeature | null> {
+    try {
+      const response = await queryFeatures({
+        url: this.featureUrl,
+        where: `OBJECTID=${userId} AND ACTIVE=1`,
+        outFields: "*",
+        authentication: gisCredentialManager,
+      });
+      if ("features" in response && response.features.length > 0) {
+        return response.features[0];
+      }
+      return null;
+    } catch (error) {
+      appLogger.error("GET User Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET user error" };
     }
   }
 }

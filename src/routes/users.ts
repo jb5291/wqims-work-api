@@ -5,6 +5,7 @@ import { default as graph } from "../util/graph";
 import { WqimsUser } from "../models/WqimsUser";
 import { logRequest, verifyAndRefreshToken } from "./auth";
 import cookieParser from "cookie-parser";
+import { WqimsObject } from '../models/Wqims';
 
 const usersRouter = express.Router();
 usersRouter.use(cookieParser());
