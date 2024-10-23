@@ -172,6 +172,7 @@ class WqimsUser extends WqimsObject {
       return Promise.reject("Invalid role");
     }
 
+    try {
       response = await queryRelated({
         url: this.featureUrl,
         objectIds: [this.objectId],
