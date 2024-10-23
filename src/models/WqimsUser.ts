@@ -455,6 +455,24 @@ class WqimsUser extends WqimsObject {
         .then(response => console.log(response.data))
         .catch(error => console.error(error));
   }
+
+  static async getUser(userId: number): Promise<IFeature | null> {
+    try {
+      const response = await queryFeatures({
+        url: WqimsUser.featureUrl,
+        objectIds: [userId],
+        outFields: "*",
+        authentication: gisCredentialManager,
+      });
+      if("features" in response && response.features.length) {
+        return response.features[0];
+      } else {
+        return null;
+      }
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
 }
 
 /**

@@ -279,6 +279,21 @@ usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   }
 });
 
+usersRouter.get("/:id", verifyAndRefreshToken, logRequest, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const user = await WqimsUser.getUser(userId);
+    if (user) {
+      res.json(user.attributes);
+    } else {
+      res.status(404).send({ error: "User not found", message: "User GET error" });
+    }
+  } catch (error) {
+    appLogger.error("User GET Error:", error);
+    res.status(500).send({ error, message: "User GET error" });
+  }
+});
+
 usersRouter.use("/search", async (req, res) => {
   try {
     const searchQuery = req.query.filter as string;
