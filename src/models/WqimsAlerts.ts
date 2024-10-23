@@ -213,7 +213,7 @@ class WqimsAlert extends WqimsObject {
       }
       return null;
     } catch (error) {
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET user error" };
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET Alert error" };
     }
   }
 }

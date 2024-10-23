@@ -251,7 +251,7 @@ alertsRouter.get('/:id', verifyAndRefreshToken, logRequest, async (req, res) => 
     const alertId = parseInt(req.params.id);
     const alert = await WqimsAlert.getAlert(alertId);
     if (alert) {
-      res.json(alert);
+      res.json(alert.attributes);
     } else {
       res.status(404).json({ message: 'Alert not found' });
     }
