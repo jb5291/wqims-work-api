@@ -433,4 +433,19 @@ groupsRouter.post("/assignMember", verifyAndRefreshToken, logRequest, async (req
   }
 });
 
+groupsRouter.get('/:id', async (req, res) => {
+  try {
+    const groupId = parseInt(req.params.id);
+    const group = await WqimsGroup.getGroup(groupId);
+    if (group) {
+      res.json(group);
+    } else {
+      res.status(404).json({ message: 'Group not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching group:', error);
+    res.status(500).json({ message: 'Error fetching group', error });
+  }
+});
+
 export default groupsRouter;

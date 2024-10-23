@@ -223,6 +223,19 @@ class WqimsGroup extends WqimsObject {
       return Promise.reject({ error: error instanceof Error ? error.message : "unknown error", message: "Group GET error" });
     }
   }
+
+  static async getGroup(groupId: number): Promise<IFeature | null> {
+    try {
+      const response = await queryFeatures({ url: this.featureUrl, where: `OBJECTID=${groupId}`, outFields: "*", authentication: gisCredentialManager });
+      if("features" in response && response.features.length) {
+        return response.features[0];
+      } else {
+        return null;
+      }
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
 }
 
 export { WqimsGroup };
