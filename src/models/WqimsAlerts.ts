@@ -199,6 +199,23 @@ class WqimsAlert extends WqimsObject {
       throw { error: error instanceof Error ? error.message : "unknown error", message: "Alert Acknowledge error" };
     }
   }
+
+  static async getAlert(alertId: number): Promise<IFeature | null> {
+    try {
+      const response = await queryFeatures({
+        url: WqimsAlert.featureUrl,
+        where: `OBJECTID=${alertId}`,
+        outFields: '*',
+        authentication: gisCredentialManager
+      })
+      if ("features" in response && response.features.length > 0) {
+        return response.features[0];
+      }
+      return null;
+    } catch (error) {
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET user error" };
+    }
+  }
 }
 
 export { WqimsAlert };

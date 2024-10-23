@@ -246,4 +246,19 @@ alertsRouter.post("/status", verifyAndRefreshToken, logRequest, async (req, res)
   }
 });
 
+alertsRouter.get('/:id', verifyAndRefreshToken, logRequest, async (req, res) => {
+  try {
+    const alertId = parseInt(req.params.id);
+    const alert = await WqimsAlert.getAlert(alertId);
+    if (alert) {
+      res.json(alert);
+    } else {
+      res.status(404).json({ message: 'Alert not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching alert:', error);
+    res.status(500).json({ message: 'Error fetching alert', error });
+  }
+});
+
 export default alertsRouter;
