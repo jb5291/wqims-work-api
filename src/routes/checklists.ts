@@ -132,7 +132,7 @@ const checklistsRouter = express.Router();
      *              type: string
      *              example: 'Internal Server Error'
      */
-checklistsRouter.get('/', verifyAndRefreshToken, logRequest, async (req, res) => {
+checklistsRouter.get('/', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const getChecklistResult = await WqimsChecklist.getActiveFeatures();
     res.json(getChecklistResult.map(f => f.attributes));
@@ -173,7 +173,7 @@ checklistsRouter.get('/', verifyAndRefreshToken, logRequest, async (req, res) =>
      *               type: string
      *               example: 'Internal Server Error'
      */
-checklistsRouter.put('/', verifyAndRefreshToken, logRequest, async (req, res) => {
+checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const template = new WqimsChecklist(req.body);
     const time = new Date().getTime();
@@ -226,7 +226,7 @@ checklistsRouter.put('/', verifyAndRefreshToken, logRequest, async (req, res) =>
  *               type: string
  *               example: 'Internal Server Error'
  */
-checklistsRouter.delete('/:id', verifyAndRefreshToken, logRequest, async (req, res) => {
+checklistsRouter.delete('/:id', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     // const checklist = new WqimsChecklist(req.body);
     const id = req.params.id;
@@ -269,7 +269,7 @@ checklistsRouter.delete('/:id', verifyAndRefreshToken, logRequest, async (req, r
  *       500:
  *         description: Internal Server Error
  */
-checklistsRouter.patch('/', verifyAndRefreshToken, logRequest, async (req, res) => {
+checklistsRouter.patch('/', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const { itemChanges, ...checklistTemplate } = req.body;
     const timestamp = new Date().getTime();
@@ -336,7 +336,7 @@ checklistsRouter.patch('/', verifyAndRefreshToken, logRequest, async (req, res) 
  *       500:
  *         description: Internal Server Error
  */
-checklistsRouter.get('/:id', verifyAndRefreshToken, logRequest, async (req, res) => {
+checklistsRouter.get('/:id', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const getChecklistItemsResult = await WqimsChecklist.getChecklistItems(parseInt(req.params.id));
     res.json(getChecklistItemsResult.map(f => f.attributes));
@@ -372,7 +372,7 @@ checklistsRouter.get('/:id', verifyAndRefreshToken, logRequest, async (req, res)
  *       500:
  *         description: Internal Server Error
  */
-checklistsRouter.put('/items', verifyAndRefreshToken, logRequest, async (req, res) => {
+checklistsRouter.put('/items', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   const  checklistItem = new WqimsChecklist(req.body);
   const timestamp = new Date().getTime();
 
@@ -410,7 +410,7 @@ checklistsRouter.put('/items', verifyAndRefreshToken, logRequest, async (req, re
  *       500:
  *         description: Internal Server Error
  */
-checklistsRouter.delete('/items/:itemId', verifyAndRefreshToken, logRequest, async (req, res) => {
+checklistsRouter.delete('/items/:itemId', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const updateResult = await WqimsChecklist.deleteFeature(WqimsChecklist.itemFeaturesUrl, parseInt(req.params.itemId));
     if(!updateResult.success) { throw new Error(updateResult.error?.description || "Error deactivating checklist item"); }

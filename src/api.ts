@@ -72,6 +72,18 @@ app.get("/swagger.json", (req, res) => {
  */
 app.use("/api-docs", swaggerUI.serve, swaggerUI.setup(swaggerSpec));
 
+
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
+});
+
+app.use((req, res, next) => {
+  console.log(`Received ${req.method} request for ${req.url}`);
+  console.log('Headers:', req.headers);
+  next();
+});
+
 /**
  * Starts the server with the given options.
  * @param {https.ServerOptions|undefined} options - HTTPS server options or undefined for HTTP.

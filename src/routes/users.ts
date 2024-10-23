@@ -5,6 +5,7 @@ import { default as graph } from "../util/graph";
 import { WqimsUser } from "../models/WqimsUser";
 import { logRequest, verifyAndRefreshToken } from "./auth";
 import cookieParser from "cookie-parser";
+import { WqimsObject } from '../models/Wqims';
 
 const usersRouter = express.Router();
 usersRouter.use(cookieParser());
@@ -276,6 +277,24 @@ usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
       appLogger.error("User PATCH Error:", "unknown error");
       res.status(500).send({ error: "unknown error", message: "User PATCH error" });
     }
+  }
+});
+
+usersRouter.get('/:id', async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    console.log('Fetching user with ID:', userId); // Add this log
+    const user = await WqimsUser.getUser(userId);
+    if (user) {
+      console.log('User found:', user); // Add this log
+      res.json(user.attributes);
+    } else {
+      console.log('User not found'); // Add this log
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching user:', error); // Add this log
+    res.status(500).json({ message: 'Error fetching user', error });
   }
 });
 

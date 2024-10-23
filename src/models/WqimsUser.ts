@@ -157,7 +157,8 @@ class WqimsUser extends WqimsObject {
   async updateUserRole(): Promise<IEditFeatureResult | undefined> {
     const objectId: number = this.OBJECTID || 0;
     const allowedRoles: string[] = ["Admin", "Editor", "Viewer"];
-    if (!allowedRoles.includes(this.ROLE)) {
+    const userRole = this.ROLE === "Administrator" ? "Admin" : this.ROLE;
+    if (!allowedRoles.includes(userRole)) {
       return Promise.reject("Invalid role");
     }
 

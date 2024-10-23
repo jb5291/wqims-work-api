@@ -147,14 +147,22 @@ alertsRouter.use(cookieParser());
 alertsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const userId = await checkToken(req, res) as string;
+    if(!userId) { throw new Error("Invalid Token") }
     const userAlerts = await WqimsAlert.getUserAlerts(parseInt(userId));
     res.json(userAlerts.map((feature) => feature.attributes));  
   } catch (error) {
-    appLogger.error("Alerts GET Error:", error instanceof Error ? error.stack : "unknown error");
-    res.status(500).send({
-      error: error instanceof Error ? error.message : "unknown error",
-      message: "Alerts GET error",
-    });
+    console.log(error)
+    if (error instanceof Error && error.message === "Invalid Token") {
+        return res.status(401).send({
+            error: error.message,
+            message: "Unauthorized",
+        });
+    } else {
+        return res.status(500).send({
+            error: error instanceof Error ? error.message : "unknown error",
+            message: "Alerts GET error",
+        });
+    }
   }
 });
 
