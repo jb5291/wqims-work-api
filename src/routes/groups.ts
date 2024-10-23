@@ -436,9 +436,16 @@ groupsRouter.post("/assignMember", verifyAndRefreshToken, logRequest, async (req
 groupsRouter.get('/:id', async (req, res) => {
   try {
     const groupId = parseInt(req.params.id);
-    const group = await WqimsGroup.getGroup(groupId);
-    if (group) {
-      res.json(group);
+    const groupResult = await WqimsGroup.getGroup(groupId);
+    if (groupResult) {
+      const groupItems = await WqimsGroup.assignItemsToGroup([groupResult])
+
+      const groupData = groupItems.map(({ featureUrl, MEMBERS, THRESHOLDS, ...group }) => ({
+        ...group,
+        MEMBERS: MEMBERS.map(({ featureUrl, ...member }) => member),
+        THRESHOLDS: THRESHOLDS.map(({ featureUrl, ...threshold }) => threshold),
+      }));
+      res.json(groupData);
     } else {
       res.status(404).json({ message: 'Group not found' });
     }
