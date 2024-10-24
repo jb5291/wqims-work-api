@@ -22,7 +22,11 @@ const app = express();
 /**
  * Middleware setup for the Express application.
  */
-app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
+app.use(cors({
+  origin: ALLOWED_ORIGINS,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.set("query parser", (str: string) => qs.parse(str));

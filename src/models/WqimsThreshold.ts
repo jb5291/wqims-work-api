@@ -7,15 +7,15 @@ import {
   IQueryFeaturesResponse,
   IQueryResponse,
   queryFeatures,
-  updateFeatures,
 } from "@esri/arcgis-rest-feature-service";
 import { gisCredentialManager } from "../routes/auth";
+import { Wqims } from "./Wqims.interface";
 
 /**
  * Class representing a WqimsThreshold.
  * @extends WqimsObject
  */
-class WqimsThreshold extends WqimsObject {
+class WqimsThreshold extends WqimsObject implements Wqims {
   GLOBALID!: string | null;
   LOCATION_CODE!: string;
   LOCATION_NAME!: string;

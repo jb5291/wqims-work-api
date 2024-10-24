@@ -110,7 +110,7 @@ const groupsRouter = express.Router();
  *              type: string
  *              example: 'Internal Server Error'
  */
-groupsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+groupsRouter.get("/", /*verifyAndRefreshToken, logRequest,*/ async (req, res) => {
   try {
     const getGroupsResult = await WqimsGroup.getActiveFeatures();
     const groups = await WqimsGroup.assignItemsToGroup(getGroupsResult);
@@ -433,7 +433,37 @@ groupsRouter.post("/assignMember", verifyAndRefreshToken, logRequest, async (req
   }
 });
 
-groupsRouter.get('/:id', async (req, res) => {
+/**
+ * @swagger
+ * /notificationGroups/{id}:
+ *  get:
+ *    summary: Get a group by id
+ *    description: Gets a group by id from notificationGroups
+ *    parameters: 
+ *      - in: path
+ *        name: id
+ *        required: true
+ *        description: The id of the group to get
+ *        schema:
+ *          type: integer
+ *    tags:
+ *      - Notification Groups
+ *    responses:
+ *      '200':
+ *        description: A group
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/GroupData'
+ *      '500':
+ *        description: Internal Server Error
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *              example: 'Internal Server Error'
+ */
+groupsRouter.get('/:id', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const groupId = parseInt(req.params.id);
     const groupResult = await WqimsGroup.getGroup(groupId);
@@ -450,7 +480,7 @@ groupsRouter.get('/:id', async (req, res) => {
       res.status(404).json({ message: 'Group not found' });
     }
   } catch (error) {
-    console.error('Error fetching group:', error);
+    console.error('Error fetching group                             :', error);
     res.status(500).json({ message: 'Error fetching group', error });
   }
 });

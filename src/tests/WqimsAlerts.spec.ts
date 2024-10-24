@@ -1,4 +1,4 @@
-import { queryFeatures } from "@esri/arcgis-rest-feature-service";
+import {IQueryFeaturesResponse, queryFeatures} from "@esri/arcgis-rest-feature-service";
 import { WqimsAlert } from "../models/WqimsAlerts";
 
 jest.mock("@esri/arcgis-rest-feature-service");

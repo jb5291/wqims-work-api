@@ -11,12 +11,13 @@ import { WqimsGroup } from "./WqimsGroup";
 import { WqimsUser } from "./WqimsUser";
 import { gisCredentialManager } from "../routes/auth";
 import { appLogger } from "../util/appLogger";
+import { Wqims } from "./Wqims.interface";
 
 /**
  * Class representing a WqimsAlert.
  * @extends WqimsObject
  */
-class WqimsAlert extends WqimsObject {
+class WqimsAlert extends WqimsObject implements Wqims {
   GLOBALID!: string | null;
   SAMPLENUM!: string;
   LOCATION!: string;

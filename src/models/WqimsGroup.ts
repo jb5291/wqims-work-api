@@ -15,12 +15,13 @@ import { authConfig } from "../util/secrets";
 import { appLogger } from "../util/appLogger";
 import { WqimsUser } from "./WqimsUser";
 import { WqimsThreshold } from "./WqimsThreshold";
+import { Wqims } from "./Wqims.interface";
 
 /**
  * Class representing a WqimsGroup.
  * @extends WqimsObject
  */
-class WqimsGroup extends WqimsObject {
+class WqimsGroup extends WqimsObject implements Wqims {
   GROUPNAME: string;
   GROUPID: string | null;
   MEMBERS: WqimsUser[];
@@ -226,14 +227,19 @@ class WqimsGroup extends WqimsObject {
 
   static async getGroup(groupId: number): Promise<IFeature | null> {
     try {
-      const response = await queryFeatures({ url: this.featureUrl, where: `OBJECTID=${groupId}`, outFields: "*", authentication: gisCredentialManager });
-      if("features" in response && response.features.length) {
+      const response = await queryFeatures({
+        url: this.featureUrl,
+        where: `OBJECTID=${groupId} AND ACTIVE=1`,
+        outFields: "*",
+        authentication: gisCredentialManager,
+      });
+      if ("features" in response && response.features.length > 0) {
         return response.features[0];
-      } else {
-        return null;
       }
+      return null;
     } catch (error) {
-      return Promise.reject(error);
+      appLogger.error("GET Group Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET group error" };
     }
   }
 }

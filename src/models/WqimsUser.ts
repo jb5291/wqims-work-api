@@ -15,6 +15,7 @@ import { authConfig } from "../util/secrets";
 import { gisCredentialManager } from "../routes/auth";
 import { Request } from "express";
 import axios from "axios";
+import { Wqims } from "./Wqims.interface";
 
 type WqimsRole = {
   OBJECTID: number;
@@ -41,7 +42,7 @@ type WqimsRole = {
  * Class representing a WqimsUser.
  * @extends WqimsObject
  */
-class WqimsUser extends WqimsObject {
+class WqimsUser extends WqimsObject implements Wqims {
   NAME!: string;
   DEPARTMENT!: string;
   POSITION!: string;

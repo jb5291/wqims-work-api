@@ -4,6 +4,7 @@ import { WqimsThreshold } from "../models/WqimsThreshold";
 import { logRequest, verifyAndRefreshToken } from "./auth";
 import { IFeature } from "@esri/arcgis-rest-request";
 import { IEditFeatureResult } from "@esri/arcgis-rest-feature-service";
+import { WqimsObject } from "../models/Wqims";
 
 const thresholdsRouter = express.Router();
 
@@ -110,7 +111,7 @@ const thresholdsRouter = express.Router();
  *              type: string
  *              example: 'Internal Server Error'
  */
-thresholdsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+thresholdsRouter.get("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const getThresholdResult = await WqimsThreshold.getActiveFeatures();
     res.json(getThresholdResult.map((feature: IFeature) => feature.attributes));
@@ -154,7 +155,7 @@ thresholdsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) =>
  *              type: string
  *              example: 'Internal Server Error'
  */
-thresholdsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+thresholdsRouter.put("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const threshold = new WqimsThreshold(req.body);
     const updateResult = await threshold.checkInactive();
@@ -203,7 +204,7 @@ thresholdsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) =>
  *              type: string
  *              example: 'Internal Server Error'
  */
-thresholdsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+thresholdsRouter.post("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const threshold = new WqimsThreshold(req.body);
 
@@ -254,7 +255,7 @@ thresholdsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) =
  *              type: string
  *              example: 'Internal Server Error'
  */
-thresholdsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+thresholdsRouter.patch("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const threshold = new WqimsThreshold(req.body);
     const updateResult = await threshold.updateFeature();
@@ -269,6 +270,71 @@ thresholdsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) 
     } else {
       appLogger.error("Threshold PATCH Error:", "unknown error");
       res.status(500).send({ error: "unknown error", message: "Threshold PATCH error" });
+    }
+  }
+});
+
+/**
+ * @swagger
+ * /thresholds/{id}:
+ *  get:
+ *    summary: Get a specific threshold by ID
+ *    description: Fetches a threshold from the database using its ID
+ *    tags:
+ *      - Thresholds
+ *    parameters:
+ *      - in: path
+ *        name: id
+ *        required: true
+ *        schema:
+ *          type: integer
+ *        description: The ID of the threshold to retrieve
+ *    responses:
+ *      '200':
+ *        description: A threshold object
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/ThresholdData'
+ *      '404':
+ *        description: Threshold not found
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                message:
+ *                  type: string
+ *                  example: 'Threshold not found'
+ *      '500':
+ *        description: Error fetching threshold
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                message:
+ *                  type: string
+ *                  example: 'Error fetching threshold'
+ *                error:
+ *                  type: string
+ */
+thresholdsRouter.get('/:id', async (req, res) => {
+  try {
+    const thresholdId = parseInt(req.params.id);
+    const threshold = await WqimsThreshold.getObject(thresholdId);
+    if (threshold) {
+      res.json(threshold.attributes);
+    } else {
+      res.status(404).json({ message: 'Threshold not found' });
+    }
+  } catch (error) {
+    if(error instanceof Error) {
+      appLogger.error("Threshold GET Error:", error.stack);
+      res.status(500).send({ error: error.message, message: "Threshold GET error" });
+    } else {
+      appLogger.error("Threshold GET Error:", "unknown error");
+      res.status(500).send({ error: "unknown error", message: "Threshold GET error" });
     }
   }
 });

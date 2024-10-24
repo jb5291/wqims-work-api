@@ -152,11 +152,11 @@ class WqimsObject {
     }
   }
 
-  static async getUser(userId: number): Promise<IFeature | null> {
+  static async getObject(objectId: number): Promise<IFeature | null> {
     try {
       const response = await queryFeatures({
         url: this.featureUrl,
-        where: `OBJECTID=${userId} AND ACTIVE=1`,
+        where: `OBJECTID=${objectId} AND ACTIVE=1`,
         outFields: "*",
         authentication: gisCredentialManager,
       });
@@ -165,8 +165,8 @@ class WqimsObject {
       }
       return null;
     } catch (error) {
-      appLogger.error("GET User Error:", error instanceof Error ? error.stack : "unknown error");
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET user error" };
+      appLogger.error("GET Object Error:", error instanceof Error ? error.stack : "unknown error");
+      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET object error" };
     }
   }
 }

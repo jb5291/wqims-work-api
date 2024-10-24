@@ -5,8 +5,9 @@ import { WqimsObject } from "./Wqims";
 import { Request } from "express";
 import { appLogger } from "../util/appLogger";
 import { v4 as uuidv4 } from "uuid";
+import { Wqims } from "./Wqims.interface";
 
-export interface IChecklistItem {
+export type IChecklistItem = {
   DESCRIPTION: string;
   ORDER_: number;
   CREATED_AT: number | null;
@@ -22,7 +23,7 @@ export interface IChecklistItem {
  * Class representing a WqimsChecklist.
  * @extends WqimsObject
  */
-class WqimsChecklist extends WqimsObject {
+class WqimsChecklist extends WqimsObject implements Wqims {
   GLOBALID!: string | null;
   TEMPLATE_NAME!: string;
   CREATED_AT!: number;
