@@ -186,7 +186,8 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
       if(!itemResults) { throw new Error("Error creating checklist items"); }
     }
 
-    res.json(template);
+    const { featureUrl, ACTIVE, ...templateData } = template;
+    res.json(templateData);
   } catch (error: unknown) {
     if(error instanceof Error) {
       appLogger.error("Checklists PUT Error:", error.stack);
