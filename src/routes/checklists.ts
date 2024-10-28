@@ -5,6 +5,7 @@ import { WQIMS_DB_CONFIG } from '../util/secrets'
 import { appLogger, actionLogger } from '../util/appLogger'
 import { verifyAndRefreshToken, logRequest } from './auth';
 import WqimsChecklist, { IChecklistItem } from '../models/WqimsChecklist';
+import { IEditFeatureResult } from '@esri/arcgis-rest-feature-service';
 
 const checklistsRouter = express.Router();
 
@@ -279,8 +280,8 @@ checklistsRouter.patch('/', /* verifyAndRefreshToken, logRequest, */ async (req,
     const itemsToAdd = itemChanges.add;
     const itemsToUpdate = itemChanges.update;
     let itemUpdatesResults: IChecklistItem[] = [];
-    let itemAddResults: IChecklistItem[] = [];
-    let itemDeleteResults: IChecklistItem[] = [];
+    let itemAddResults: IEditFeatureResult[] = [];
+    let itemDeleteResults: IEditFeatureResult[] = [];
 
     checklistTemplate.UPDATED_AT = timestamp;
 
@@ -288,9 +289,13 @@ checklistsRouter.patch('/', /* verifyAndRefreshToken, logRequest, */ async (req,
     if(!templateResult) { throw new Error("Error updating checklist template"); }
 
     if(itemsToAdd.length) {
+      itemAddResults = await WqimsChecklist.addItemFeatures(itemsToAdd);
+      if(!itemAddResults) { throw new Error("Error adding checklist items"); }
     }
 
     if (itemsToDelete.length) {
+      itemDeleteResults = await WqimsChecklist.removeItemFeatures(itemsToDelete);
+      if(!itemDeleteResults) { throw new Error("Error deleting checklist items"); }
     }
 
     if (itemsToUpdate.length) {

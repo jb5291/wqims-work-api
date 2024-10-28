@@ -16,6 +16,7 @@ export type IChecklistItem = {
   COMPLETED_BY: string | null;
   COMPLETED_AT: number | null;
   GLOBALID: string | null;
+  OBJECTID: number | null;
   TEMPLATE_ID: string | null;
 }
 
@@ -193,6 +194,38 @@ class WqimsChecklist extends WqimsObject implements Wqims {
     } catch (error) {
       appLogger.error("Checklist PATCH Error:", error instanceof Error ? error.stack : "unknown error");
       throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PATCH error"};
+    }
+  }
+
+  static async addItemFeatures(items: IChecklistItem[]): Promise<IEditFeatureResult[]> {
+    try {
+      const addResponse = await addFeatures({
+        url: WqimsChecklist.itemFeaturesUrl,
+        features: items.map(item => ({attributes: item})),
+        authentication: gisCredentialManager,
+      }) as {addResults: IEditFeatureResult[]};
+      if (addResponse.addResults.every(result => result.success)) {
+        return addResponse.addResults;
+      } else {
+        throw new Error("Error adding items");
+      }
+    } catch (error) {
+      appLogger.error("Checklist PUT Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist PUT error"};
+    }
+  }
+
+  static async removeItemFeatures(items: IChecklistItem[]): Promise<IEditFeatureResult[]> {
+    try {
+      const deleteResponse = await deleteFeatures({
+        url: WqimsChecklist.itemFeaturesUrl,
+        objectIds: items.map(item => item.OBJECTID as number),
+        authentication: gisCredentialManager,
+      }) as {deleteResults: IEditFeatureResult[]};
+      return deleteResponse.deleteResults;
+    } catch (error) {
+      appLogger.error("Checklist DELETE Error:", error instanceof Error ? error.stack : "unknown error");
+      throw {error: error instanceof Error ? error.message : "unknown error", message: "Checklist DELETE error"};
     }
   }
 
