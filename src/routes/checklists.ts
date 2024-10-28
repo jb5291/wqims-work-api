@@ -289,6 +289,11 @@ checklistsRouter.patch('/', /* verifyAndRefreshToken, logRequest, */ async (req,
     if(!templateResult) { throw new Error("Error updating checklist template"); }
 
     if(itemsToAdd.length) {
+      itemsToAdd.forEach((item: IChecklistItem) => {
+        item.CREATED_AT = timestamp;
+        item.UPDATED_AT = timestamp;
+        item.TEMPLATE_ID = checklistTemplate.GLOBALID;
+      });
       itemAddResults = await WqimsChecklist.addItemFeatures(itemsToAdd);
       if(!itemAddResults) { throw new Error("Error adding checklist items"); }
     }

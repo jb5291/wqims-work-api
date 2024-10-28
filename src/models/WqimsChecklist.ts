@@ -199,12 +199,20 @@ class WqimsChecklist extends WqimsObject implements Wqims {
 
   static async addItemFeatures(items: IChecklistItem[]): Promise<IEditFeatureResult[]> {
     try {
+      items.forEach(item => {
+        item.GLOBALID = `{${uuidv4().toUpperCase()}}`;
+        item.CREATED_AT = item.CREATED_AT || Date.now();
+        item.UPDATED_AT = item.UPDATED_AT || Date.now();
+      })
       const addResponse = await addFeatures({
         url: WqimsChecklist.itemFeaturesUrl,
         features: items.map(item => ({attributes: item})),
         authentication: gisCredentialManager,
       }) as {addResults: IEditFeatureResult[]};
       if (addResponse.addResults.every(result => result.success)) {
+        addResponse.addResults.forEach((result, index) => {
+          items[index].OBJECTID = result.objectId;
+        });
         return addResponse.addResults;
       } else {
         throw new Error("Error adding items");
