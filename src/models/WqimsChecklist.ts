@@ -52,6 +52,10 @@ class WqimsChecklist extends WqimsObject implements Wqims {
         this.GLOBALID = value;
     }
 
+    get globalId() {
+        return this.GLOBALID;
+    }
+
     /**
    * Retrieves active features, all features for checklists and checklist items.
    * @returns A promise that resolves to an array of active features.
@@ -211,9 +215,19 @@ class WqimsChecklist extends WqimsObject implements Wqims {
     }
   }
 
-  static async addItemsToTemplate(items: IChecklistItem[]): Promise<IEditFeatureResult[]> {
+  static cleanItem(item: IChecklistItem, templateId: string): IChecklistItem {
+    return {
+      ...item,
+      TEMPLATE_ID: templateId,
+      CREATED_AT: item.CREATED_AT || Date.now(),
+      UPDATED_AT: item.UPDATED_AT || Date.now(),
+      GLOBALID: item.GLOBALID || `{${uuidv4().toUpperCase()}}`
+    }
+  }
+
+  async addItemsToTemplate(): Promise<IEditFeatureResult[]> {
     try {
-      const featureJson = items.map(item => ({attributes: item}));
+      const featureJson = this.items.map(item => ({attributes: WqimsChecklist.cleanItem(item, this.GLOBALID as string)}));
       const addResponse = await addFeatures({
         url: WqimsChecklist.itemFeaturesUrl,
         features: featureJson,

@@ -180,9 +180,11 @@ checklistsRouter.put('/', /* verifyAndRefreshToken, logRequest, */ async (req, r
 
     const result = await WqimsChecklist.addTemplateFeature(template.TEMPLATE_NAME, time);
     if(!result.success) { throw new Error("Error creating checklist template"); }
+    template.OBJECTID = result.objectId;
+    template.globalId = result.globalId as string;
 
     if (template.items.length) {
-      const itemResults = await WqimsChecklist.addItemsToTemplate(template.items as IChecklistItem[]);
+      const itemResults = await template.addItemsToTemplate();
       if(!itemResults) { throw new Error("Error creating checklist items"); }
     }
 
@@ -251,7 +253,7 @@ checklistsRouter.delete('/:id', /* verifyAndRefreshToken, logRequest, */ async (
  *   patch:
  *     summary: Update a checklist template, updates checklist items
  *     description: Update a checklist template name, or updated items
- *     tags:
+ *     tstags:
  *       - Checklists
  *     requestBody:
  *       required: true
