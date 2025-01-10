@@ -4,6 +4,7 @@ import { appLogger } from "../util/appLogger";
 import { default as graph } from "../util/graph";
 import { WqimsUser } from "../models/WqimsUser";
 import cookieParser from "cookie-parser";
+import { verifyAndRefreshToken, logRequest } from "./auth";
 
 const usersRouter = express.Router();
 usersRouter.use(cookieParser());
@@ -108,7 +109,7 @@ usersRouter.use(cookieParser());
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.get("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
+usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const getUserResult = await WqimsUser.getActiveFeatures();
     res.json(getUserResult.map((user) => user.attributes));
@@ -151,7 +152,7 @@ usersRouter.get("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) =
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.put("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
+usersRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const user = new WqimsUser(req.body);
     const updateResult = await user.checkInactive();
@@ -202,7 +203,7 @@ usersRouter.put("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) =
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.post("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
+usersRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const user = new WqimsUser(req.body);
     user.PHONENUMBER = user.PHONENUMBER || "none";
@@ -258,7 +259,7 @@ usersRouter.post("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) 
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.patch("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
+usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   try {
     const user = new WqimsUser(req.body);
     const updateResult = await user.updateFeature();
@@ -278,20 +279,20 @@ usersRouter.patch("/", /* verifyAndRefreshToken, logRequest, */ async (req, res)
   }
 });
 
-usersRouter.get("/:id", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
-  try {
-    const userId = parseInt(req.params.id);
-    const user = await WqimsUser.getUser(userId);
-    if (user) {
-      res.json(user.attributes);
-    } else {
-      res.status(404).send({ error: "User not found", message: "User GET error" });
-    }
-  } catch (error) {
-    appLogger.error("User GET Error:", error);
-    res.status(500).send({ error, message: "User GET error" });
-  }
-});
+// usersRouter.get("/:id", /* verifyAndRefreshToken, logRequest ,*/ async (req, res) => {
+//   try {
+//     const userId = parseInt(req.params.id);
+//     const user = await WqimsUser.getUser(userId);
+//     if (user) {
+//       res.json(user.attributes);
+//     } else {
+//       res.status(404).send({ error: "User not found", message: "User GET error" });
+//     }
+//   } catch (error) {
+//     appLogger.error("User GET Error:", error);
+//     res.status(500).send({ error, message: "User GET error" });
+//   }
+// });
 
 usersRouter.use("/search", async (req, res) => {
   try {
