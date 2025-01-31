@@ -17,8 +17,11 @@ export interface IFeature {
 }
 
 export interface IQueryResponse {
-  objectIds?: number[];
   features?: IFeature[];
+  objectIds?: number[];
+  relatedRecordGroups?: Array<{
+    relatedRecords?: IFeature[];
+  }>;
 }
 
 /**
@@ -57,12 +60,14 @@ class WqimsObject {
         }
       );
       
-      if (!response.features) throw new Error("Error getting data");
+      if (!response.features) {
+        throw new Error("Error getting data");
+      }
       return response.features;
       
     } catch (error) {
       appLogger.error("GET Error:", error instanceof Error ? error.stack : "unknown error");
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET error" };
+      throw error;
     }
   }
 
@@ -141,6 +146,10 @@ class WqimsObject {
           features: [{ attributes: this }]
         }
       );
+      
+      if (!response.updateResults[0].success) {
+        throw new Error(response.updateResults[0].error?.description || "Update failed");
+      }
       return response.updateResults[0];
     } catch (error) {
       appLogger.error("Update feature error:", error);
@@ -190,6 +199,10 @@ class WqimsObject {
             features: [{ attributes: this }]
           }
         );
+        
+        if (!updateResponse.updateResults[0].success) {
+          throw new Error(updateResponse.updateResults[0].error?.description || "Reactivate failed");
+        }
         return updateResponse.updateResults[0];
       } catch (error) {
         appLogger.error("Reactivate feature error:", error);

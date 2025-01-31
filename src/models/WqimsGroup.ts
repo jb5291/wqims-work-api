@@ -1,21 +1,25 @@
-import { WqimsObject } from "./Wqims";
+import { WqimsObject, IEditFeatureResult, IFeature, IQueryResponse } from "./Wqims";
 import {
   addFeatures,
   deleteFeatures,
-  IEditFeatureResult,
-  IFeature, IQueryFeaturesResponse, IQueryResponse,
-  IRelatedRecordGroup,
+  IQueryFeaturesResponse,
   queryFeatures,
   queryRelated,
   updateFeatures,
 } from "@esri/arcgis-rest-feature-service";
 import { Request } from "express";
-import { gisCredentialManager } from "../routes/auth";
 import { authConfig } from "../util/secrets";
 import { appLogger } from "../util/appLogger";
 import { WqimsUser } from "./WqimsUser";
 import { WqimsThreshold } from "./WqimsThreshold";
 import { Wqims } from "./Wqims.interface";
+import { ArcGISService } from '../services/ArcGISService';
+
+interface IQueryRelatedResponse {
+  relatedRecordGroups?: Array<{
+    relatedRecords?: IFeature[];
+  }>;
+}
 
 /**
  * Class representing a WqimsGroup.
@@ -76,16 +80,16 @@ class WqimsGroup extends WqimsObject implements Wqims {
    * @param thresholdId - The threshold ID.
    * @returns A promise that resolves to the result of the add operation.
    */
-  static async assignThresholds(GROUPIDs: string[], thresholdId: string): Promise<IEditFeatureResult> {
+  static async assignThresholds(groupIds: string[], thresholdId: string): Promise<IEditFeatureResult> {
     try {
-      const features = GROUPIDs.map(id => ({ attributes: { GROUP_ID: id, THRSHLD_ID: thresholdId } }));
-      
-      const result = await addFeatures({ url: this.thresholdsRelationshipClassUrl, authentication: gisCredentialManager, features });
-      
-      if(!result.addResults[0].success) throw new Error("Add failed");
-      return result.addResults[0];
+      return await this.assignItems(
+        groupIds,
+        [new WqimsThreshold({ GLOBALID: thresholdId })],
+        this.thresholdsRelationshipClassUrl
+      );
     } catch (error) {
-      return Promise.reject(error);
+      appLogger.error("Assign thresholds error:", error);
+      throw error;
     }
   }
 
@@ -95,31 +99,45 @@ class WqimsGroup extends WqimsObject implements Wqims {
    * @param userId - The user ID.
    * @returns A promise that resolves to the result of the add operation.
    */
-  static async assignMembers(GROUPIDs: string[], userId: string): Promise<IEditFeatureResult> {
+  static async assignMembers(groupIds: string[], userId: string) {
     try {
-      const features = GROUPIDs.map(id => ({ attributes: { GROUP_ID: id, USER_ID: userId } }));
-      const result = await addFeatures({ url: this.usersRelationshipClassUrl, authentication: gisCredentialManager, features });
-      if(!result.addResults[0].success) throw new Error("Add failed");
-      return result.addResults[0];
+      return await this.assignItems(
+        groupIds,
+        [new WqimsUser({ GLOBALID: userId })], // Wrap userId in WqimsUser array
+        this.usersRelationshipClassUrl
+      );
     } catch (error) {
-      return Promise.reject(error);
+      appLogger.error("Assign members error:", error);
+      throw error;
     }
   }
 
   /**
    * Assigns items to groups.
-   * @param response - The response from a query operation.
+   * @param groups - The groups to assign items to.
    * @returns A promise that resolves to an array of WqimsGroup instances.
    */
-  static async assignItemsToGroup(response: IFeature[]): Promise<WqimsGroup[]> {
-    return Promise.all(response.map(async groupFeature => {
-      try { 
-        const group = new WqimsGroup(groupFeature.attributes);
-        group.MEMBERS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.usergroups_rel_id)).then(items => items.map(item => new WqimsUser(item.attributes)));
-        group.THRESHOLDS = await group.getGroupItems(parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id)).then(items => items.map(item => new WqimsThreshold(item.attributes)));
-        return Promise.resolve(group);
+  static async assignItemsToGroup(groups: IFeature[]): Promise<WqimsGroup[]> {
+    return Promise.all(groups.map(async group => {
+      const wqimsGroup = new WqimsGroup(group.attributes);
+
+      try {
+        // Get members (users)
+        const memberResponse = await wqimsGroup.getGroupItems(
+          parseInt(authConfig.arcgis.layers.usergroups_rel_id)
+        );
+        wqimsGroup.MEMBERS = memberResponse.map(member => new WqimsUser(member.attributes));
+
+        // Get thresholds separately
+        const thresholdResponse = await wqimsGroup.getGroupItems(
+          parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id)
+        );
+        wqimsGroup.THRESHOLDS = thresholdResponse.map(threshold => new WqimsThreshold(threshold.attributes));
+
+        return wqimsGroup;
       } catch (error) {
-        return Promise.reject(error);
+        appLogger.error("Error getting group items:", error);
+        throw error;
       }
     }));
   }
@@ -137,7 +155,14 @@ class WqimsGroup extends WqimsObject implements Wqims {
    * @returns A promise that resolves to the result of the reactivation operation.
    */
   async checkInactive(): Promise<IEditFeatureResult> {
-    const response = await queryFeatures({ url: this.featureUrl, where: `ACTIVE=0 AND GROUPNAME='${this.GROUPNAME}'`, authentication: gisCredentialManager }) as IQueryFeaturesResponse;
+    const response = await ArcGISService.request<IQueryFeaturesResponse>(
+      this.featureUrl + '/query',
+      'GET',
+      {
+        where: `ACTIVE=0 AND GROUPNAME='${this.GROUPNAME}'`,
+        outFields: "*"
+      }
+    );
     if (response.features?.length) this.groupId = response.features[0].attributes.GROUPID;
     return this.reactivateFeature(response);
   }
@@ -148,10 +173,13 @@ class WqimsGroup extends WqimsObject implements Wqims {
    */
   async updateFeature(): Promise<IEditFeatureResult> {
     const { MEMBERS, THRESHOLDS, ...groupWithoutItems } = this;
-    const response = await updateFeatures({ url: this.featureUrl, features: [{ attributes: groupWithoutItems }], authentication: gisCredentialManager });
-    if (!response.updateResults[0].success) { 
-      console.log(response.updateResults[0])
-      return Promise.reject(response.updateResults[0].error?.description); 
+    const response = await ArcGISService.request<{ updateResults: IEditFeatureResult[] }>(
+      this.featureUrl + '/updateFeatures',
+      'POST',
+      { features: [{ attributes: groupWithoutItems }] }
+    );
+    if(!response.updateResults[0].success) {
+      throw new Error(response.updateResults[0].error?.description || "Update failed");
     }
     return response.updateResults[0];
   }
@@ -163,8 +191,14 @@ class WqimsGroup extends WqimsObject implements Wqims {
   async softDeleteFeature(): Promise<IEditFeatureResult> {
     this.ACTIVE = 0;
     const { MEMBERS, THRESHOLDS, ...groupWithoutItems } = this;
-    const response = await updateFeatures({ url: this.featureUrl, features: [{ attributes: groupWithoutItems }], authentication: gisCredentialManager });
-    if(!response.updateResults[0].success) return Promise.reject(response.updateResults[0].error?.description);
+    const response = await ArcGISService.request<{ updateResults: IEditFeatureResult[] }>(
+      this.featureUrl + '/updateFeatures',
+      'POST',
+      { features: [{ attributes: groupWithoutItems }] }
+    );
+    if(!response.updateResults[0].success) {
+      throw new Error(response.updateResults[0].error?.description || "Update failed");
+    }
     return response.updateResults[0];
   }
 
@@ -176,9 +210,22 @@ class WqimsGroup extends WqimsObject implements Wqims {
    */
   async addGroupItems(relClassUrl: string, items: WqimsUser[] | WqimsThreshold[]): Promise<IEditFeatureResult> {
     const ids = items.map(feature => feature.GLOBALID);
-    const features = ids.map(id => ({ attributes: { GROUP_ID: this.GROUPID, [relClassUrl === WqimsGroup.thresholdsRelationshipClassUrl ? 'THRSHLD_ID' : 'USER_ID']: id } }));
-    const result = await addFeatures({ url: relClassUrl, authentication: gisCredentialManager, features });
-    if(!result.addResults[0].success) return Promise.reject(result.addResults[0].error?.description);
+    const features = ids.map(id => ({ 
+      attributes: { 
+        GROUP_ID: this.GROUPID, 
+        [relClassUrl === WqimsGroup.thresholdsRelationshipClassUrl ? 'THRSHLD_ID' : 'USER_ID']: id 
+      } 
+    }));
+
+    const result = await ArcGISService.request<{ addResults: IEditFeatureResult[] }>(
+      relClassUrl + '/addFeatures',
+      'POST',
+      { features }
+    );
+
+    if(!result.addResults[0].success) {
+      throw new Error(result.addResults[0].error?.description || "Add failed");
+    }
     return result.addResults[0];
   }
 
@@ -189,24 +236,41 @@ class WqimsGroup extends WqimsObject implements Wqims {
    * @returns A promise that resolves to the result of the delete operation.
    */
   async deleteGroupItems(relClassUrl: string, items: (WqimsUser[] | WqimsThreshold[])): Promise<IEditFeatureResult> {
-    let whereClause: string;
-    if ('ANALYTE' in items[0]) {
-      whereClause = `GROUP_ID='${this.GROUPID}' AND THRSHLD_ID IN ('${items.map(feature=>feature.GLOBALID).join("','")}')`;
-    } else {
-      whereClause = `GROUP_ID='${this.GROUPID}' AND USER_ID IN ('${items.map(feature=>feature.GLOBALID).join("','")}')`;
-    }
     try {
-      const queryResult = await queryFeatures({ url: relClassUrl, where: whereClause, returnIdsOnly: true, authentication: gisCredentialManager }) as IQueryResponse;
-      if (queryResult.objectIds?.length) {
-        const deleteResult = await deleteFeatures({ url: relClassUrl, objectIds: queryResult.objectIds, authentication: gisCredentialManager });
-        if(!deleteResult.deleteResults[0].success) return Promise.reject(deleteResult.deleteResults[0].error?.description);
-        return deleteResult.deleteResults[0];
+      const queryResult = await ArcGISService.request<IQueryResponse>(
+        `${relClassUrl}/query`,
+        'GET',
+        {
+          where: `GROUP_ID='${this.GROUPID}' AND ${
+            'ANALYTE' in items[0] ? 'THRSHLD_ID' : 'USER_ID'
+          } IN ('${items.map(feature=>feature.GLOBALID).join("','")}')`
+        }
+      );
+
+      if (!queryResult.objectIds?.length) {
+        return { 
+          objectId: -1, 
+          success: true, 
+          error: { 
+            code: 404, 
+            description: "No relationships found" 
+          } 
+        };
       }
-      return Promise.reject(queryResult.objectIds?.length === 0 ? "No relationships found" : "Invalid relationship class URL" );
+
+      const deleteResult = await ArcGISService.request<{ deleteResults: IEditFeatureResult[] }>(
+        `${relClassUrl}/deleteFeatures`,
+        'POST',
+        { objectIds: queryResult.objectIds }
+      );
+
+      if (!deleteResult.deleteResults[0].success) {
+        throw new Error(deleteResult.deleteResults[0].error?.description || "Delete failed");
+      }
+      return deleteResult.deleteResults[0];
     } catch (error) {
       return Promise.reject(error);
     }
-    
   }
 
   /**
@@ -217,30 +281,74 @@ class WqimsGroup extends WqimsObject implements Wqims {
    */
   async getGroupItems(relationshipId: number): Promise<IFeature[]> {
     try {
-      const response = await queryRelated({ url: this.featureUrl, objectIds: [this.objectId], relationshipId, outFields: "*", authentication: gisCredentialManager });
-      return response.relatedRecordGroups?.[0]?.relatedRecords ?? [];
+      const response = await ArcGISService.request<IQueryRelatedResponse>(
+        `${this.featureUrl}/queryRelatedRecords`,
+        'GET',
+        {
+          objectIds: [this.objectId],
+          relationshipId,
+          outFields: "*"
+        }
+      );
+
+      // If no related records, return empty array
+      if (!response.relatedRecordGroups?.[0]?.relatedRecords) {
+        return [];
+      }
+
+      // Filter records based on their attributes to ensure correct type
+      return response.relatedRecordGroups[0].relatedRecords.filter(record => {
+        if (relationshipId === parseInt(authConfig.arcgis.layers.usergroups_rel_id)) {
+          // For users, check for user-specific attributes
+          return 'NAME' in record.attributes && 'EMAIL' in record.attributes;
+        } else if (relationshipId === parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id)) {
+          // For thresholds, check for threshold-specific attributes
+          return 'ANALYTE' in record.attributes && 'LOCATION_CODE' in record.attributes;
+        }
+        return false;
+      });
     } catch (error) {
       appLogger.error("Group GET Error:", error instanceof Error ? error.stack : "unknown error");
-      return Promise.reject({ error: error instanceof Error ? error.message : "unknown error", message: "Group GET error" });
+      return Promise.reject(error);
     }
   }
 
   static async getGroup(groupId: number): Promise<IFeature | null> {
     try {
-      const response = await queryFeatures({
-        url: this.featureUrl,
-        where: `OBJECTID=${groupId} AND ACTIVE=1`,
-        outFields: "*",
-        authentication: gisCredentialManager,
-      });
-      if ("features" in response && response.features.length > 0) {
-        return response.features[0];
-      }
-      return null;
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${this.featureUrl}/query`, 
+        'GET',
+        {
+          where: `OBJECTID=${groupId} AND ACTIVE=1`,
+          outFields: "*"
+        }
+      );
+      
+      return response.features?.[0] || null;
     } catch (error) {
       appLogger.error("GET Group Error:", error instanceof Error ? error.stack : "unknown error");
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET group error" };
+      throw error;
     }
+  }
+
+  static async assignItems(groupIds: string[], items: WqimsUser[] | WqimsThreshold[], relClassUrl: string): Promise<IEditFeatureResult> {
+    const features = groupIds.map(groupId => ({
+      attributes: {
+        GROUP_ID: groupId,
+        [relClassUrl === this.thresholdsRelationshipClassUrl ? 'THRSHLD_ID' : 'USER_ID']: items[0].GLOBALID
+      }
+    }));
+
+    const result = await ArcGISService.request<{ addResults: IEditFeatureResult[] }>(
+      `${relClassUrl}/addFeatures`,
+      'POST',
+      { features }
+    );
+
+    if (!result.addResults[0].success) {
+      throw new Error(result.addResults[0].error?.description || "Add failed");
+    }
+    return result.addResults[0];
   }
 }
 

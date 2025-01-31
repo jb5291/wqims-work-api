@@ -1,15 +1,9 @@
-import { WqimsObject } from "./Wqims";
+import { WqimsObject, IEditFeatureResult, IQueryResponse, IFeature } from "./Wqims";
 import { Request } from "express";
 import { authConfig } from "../util/secrets";
-import {
-  deleteFeatures,
-  IEditFeatureResult,
-  IQueryFeaturesResponse,
-  IQueryResponse,
-  queryFeatures,
-} from "@esri/arcgis-rest-feature-service";
-import { gisCredentialManager } from "../routes/auth";
 import { Wqims } from "./Wqims.interface";
+import { ArcGISService } from '../services/ArcGISService';
+import { appLogger } from '../util/appLogger';
 
 /**
  * Class representing a WqimsThreshold.
@@ -82,11 +76,14 @@ class WqimsThreshold extends WqimsObject implements Wqims {
    * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the reactivation operation.
    */
   async checkInactive(): Promise<IEditFeatureResult> {
-    const response = await queryFeatures({
-      url: this.featureUrl,
-      where: `ACTIVE=0 AND LOCATION_CODE='${this.LOCATION_CODE}' AND ANALYSIS='${this.ANALYSIS}'`,
-      authentication: gisCredentialManager,
-    }) as IQueryFeaturesResponse;
+    const response = await ArcGISService.request<IQueryResponse>(
+      `${this.featureUrl}/query`,
+      'GET',
+      {
+        where: `ACTIVE=0 AND LOCATION_CODE='${this.LOCATION_CODE}' AND ANALYSIS='${this.ANALYSIS}'`,
+        outFields: "*"
+      }
+    );
 
     if (response.features?.length) {
       this.GLOBALID = response.features[0].attributes.GLOBALID;
@@ -98,42 +95,54 @@ class WqimsThreshold extends WqimsObject implements Wqims {
   /**
    * Removes relationship records from M2M tables
    * @param relClassUrl relationship class url
-   * @returns {Promise<IEditFeatureResult | undefined>} A promise that resolves to the result of the remove relationship operation.
+   * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the remove relationship operation.
    */
-  async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult | undefined> {
-    let queryRelResponse: IQueryResponse;
-    try { 
-      queryRelResponse = await queryFeatures({
-        url: relClassUrl,
-        where: `THRSHLD_ID='${this.GLOBALID}'`,
-        returnIdsOnly: true,
-        authentication: gisCredentialManager,
-      });
+  async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult> {
+    try {
+      const queryResponse = await ArcGISService.request<IQueryResponse>(
+        `${relClassUrl}/query`,
+        'GET',
+        {
+          where: `THRSHLD_ID='${this.GLOBALID}'`,
+          returnIdsOnly: true
+        }
+      );
+
+      if (!queryResponse.objectIds?.length) {
+        return { objectId: this.OBJECTID || 0, success: true };
+      }
+
+      const deleteResponse = await ArcGISService.request<{ deleteResults: IEditFeatureResult[] }>(
+        `${relClassUrl}/deleteFeatures`,
+        'POST',
+        { objectIds: queryResponse.objectIds }
+      );
+
+      if (!deleteResponse.deleteResults[0].success) {
+        throw new Error(deleteResponse.deleteResults[0].error?.description || "Delete failed");
+      }
+
+      return deleteResponse.deleteResults[0];
     } catch (error) {
       return Promise.reject(error);
     }
+  }
 
-    if (queryRelResponse.objectIds?.length) {
-      let deleteRelResponse: { deleteResults: IEditFeatureResult[] };
-      try {
-        deleteRelResponse = await deleteFeatures({
-          url: relClassUrl,
-          objectIds: queryRelResponse.objectIds,
-          authentication: gisCredentialManager,
-        });
-      } catch (error) {
-        return Promise.reject(error);
-      }
-
-      if (deleteRelResponse.deleteResults[0].success) {
-        return deleteRelResponse.deleteResults[0];
-      } else {
-        console.log(deleteRelResponse.deleteResults[0]);
-        return Promise.reject(deleteRelResponse.deleteResults[0]?.error?.description);
-      }
-    } else {
-      // No related records found for the threshold
-      return { objectId: this.OBJECTID || 0, success: true };
+  static async getThreshold(thresholdId: number): Promise<IFeature | null> {
+    try {
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${this.featureUrl}/query`,
+        'GET',
+        {
+          where: `OBJECTID=${thresholdId}`,
+          outFields: '*'
+        }
+      );
+      
+      return response.features?.[0] || null;
+    } catch (error) {
+      appLogger.error("GET Threshold Error:", error instanceof Error ? error.stack : "unknown error");
+      throw error;
     }
   }
 }

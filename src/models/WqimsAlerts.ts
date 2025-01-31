@@ -1,17 +1,12 @@
-import {
-  IFeature,
-  queryRelated,
-  queryFeatures,
-  IQueryFeaturesResponse,
-} from "@esri/arcgis-rest-feature-service";
+import { IFeature, IQueryResponse } from "./Wqims";
 import { authConfig } from "../util/secrets";
 import { WqimsObject } from "./Wqims";
 import { Request } from "express";
 import { WqimsGroup } from "./WqimsGroup";
 import { WqimsUser } from "./WqimsUser";
-import { gisCredentialManager } from "../routes/auth";
 import { appLogger } from "../util/appLogger";
 import { Wqims } from "./Wqims.interface";
+import { ArcGISService } from '../services/ArcGISService';
 
 /**
  * Class representing a WqimsAlert.
@@ -95,18 +90,20 @@ class WqimsAlert extends WqimsObject implements Wqims {
    */
   static async getActiveFeatures(): Promise<IFeature[]> {
     try {
-      const response = await queryFeatures({
-        url: this.featureUrl,
-        where: "ACTIVE=1",
-        outFields: "*",
-        returnGeometry: false,
-        authentication: gisCredentialManager,
-      });
-      if ("features" in response) return response.features;
-      throw new Error("Error getting data");
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${this.featureUrl}/query`,
+        'GET',
+        {
+          where: "ACTIVE=1",
+          outFields: "*",
+          returnGeometry: false
+        }
+      );
+      
+      return response.features || [];
     } catch (error) {
       appLogger.error("Alerts GET Error:", error instanceof Error ? error.stack : "unknown error");
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "User GET error" };
+      throw error;
     }
   }
 
@@ -116,44 +113,63 @@ class WqimsAlert extends WqimsObject implements Wqims {
    * @returns A promise that resolves to an array of user alerts.
    */
   static async getUserAlerts(userId: number): Promise<IFeature[]> {
-    const thresholdGlobalIDs: number[] = [];
-    const userGroupsResponse = await queryRelated({
-      url: WqimsUser.featureUrl,
-      outFields: ["OBJECTID"],
-      objectIds: [userId],
-      relationshipId: parseInt(authConfig.arcgis.layers.usergroups_rel_id),
-      authentication: gisCredentialManager,
-    });
+    try {
+      // Get user's groups
+      const userGroupsResponse = await ArcGISService.request<IQueryResponse>(
+        `${WqimsUser.featureUrl}/queryRelatedRecords`,
+        'GET',
+        {
+          objectIds: [userId],
+          relationshipId: parseInt(authConfig.arcgis.layers.usergroups_rel_id),
+          outFields: ["OBJECTID"]
+        }
+      );
 
-    if (!userGroupsResponse.relatedRecordGroups?.[0]?.relatedRecords?.length) return [];
+      if (!userGroupsResponse.relatedRecordGroups?.[0]?.relatedRecords?.length) {
+        return [];
+      }
 
-    const groupObjectIds = userGroupsResponse.relatedRecordGroups[0].relatedRecords.map((feature) => feature.attributes.OBJECTID);
+      const groupObjectIds = userGroupsResponse.relatedRecordGroups[0].relatedRecords
+        .map((feature) => feature.attributes.OBJECTID);
 
-    const groupThresholdsResponse = await queryRelated({
-      url: WqimsGroup.featureUrl,
-      outFields: ["GLOBALID"],
-      objectIds: groupObjectIds,
-      relationshipId: parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id),
-      authentication: gisCredentialManager,
-    });
+      // Get thresholds for those groups
+      const groupThresholdsResponse = await ArcGISService.request<IQueryResponse>(
+        `${WqimsGroup.featureUrl}/queryRelatedRecords`,
+        'GET',
+        {
+          objectIds: groupObjectIds,
+          relationshipId: parseInt(authConfig.arcgis.layers.thresholdsgroups_rel_id),
+          outFields: ["GLOBALID"]
+        }
+      );
 
-    groupThresholdsResponse.relatedRecordGroups?.forEach((group) => {
-      group.relatedRecords?.forEach((feature) => {
-        thresholdGlobalIDs.push(feature.attributes.GLOBALID);
+      const thresholdGlobalIDs: string[] = [];
+      groupThresholdsResponse.relatedRecordGroups?.forEach((group) => {
+        group.relatedRecords?.forEach((feature) => {
+          thresholdGlobalIDs.push(feature.attributes.GLOBALID);
+        });
       });
-    });
 
-    if (!thresholdGlobalIDs.length) return [];
+      if (!thresholdGlobalIDs.length) {
+        return [];
+      }
 
-    const alertsResponse = await queryFeatures({
-      url: this.featureUrl,
-      outFields: "*",
-      returnGeometry: false,
-      where: `THRESHOLD_ID IN (${thresholdGlobalIDs.map((id) => `'${id}'`).join(",")})`,
-      authentication: gisCredentialManager,
-    }) as IQueryFeaturesResponse;
+      // Get alerts for those thresholds
+      const alertsResponse = await ArcGISService.request<IQueryResponse>(
+        `${this.featureUrl}/query`,
+        'GET',
+        {
+          outFields: "*",
+          returnGeometry: false,
+          where: `THRESHOLD_ID IN (${thresholdGlobalIDs.map((id) => `'${id}'`).join(",")})`
+        }
+      );
 
-    return alertsResponse.features;
+      return alertsResponse.features || [];
+    } catch (error) {
+      appLogger.error("User Alerts GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw error;
+    }
   }
 
   /**
@@ -164,30 +180,33 @@ class WqimsAlert extends WqimsObject implements Wqims {
    */
   async updateStatus(userId: number) {
     try {
-      const userResponse = await queryFeatures({
-        url: WqimsUser.featureUrl,
-        outFields: ["NAME"],
-        where: `OBJECTID=${userId}`,
-        returnGeometry: false,
-        authentication: gisCredentialManager,
-      }) as IQueryFeaturesResponse;
+      const userResponse = await ArcGISService.request<IQueryResponse>(
+        `${WqimsUser.featureUrl}/query`,
+        'GET',
+        {
+          outFields: ["NAME"],
+          where: `OBJECTID=${userId}`,
+          returnGeometry: false
+        }
+      );
 
-      if (!userResponse.features?.length) throw new Error("User not found");
+      if (!userResponse.features?.length) {
+        throw new Error("User not found");
+      }
 
       switch (this.STATUS.toLowerCase()) {
         case "closed":
           Object.assign(this, {
             CLOSED_TIME: Date.now(),
             CLOSED_BY: userResponse.features[0].attributes.NAME,
-            STATUS: "Closed",
-            // ACTIVE: 0,
+            STATUS: "Closed"
           });
           break;
         case "acknowledged":
           Object.assign(this, {
             ACK_TIME: Date.now(),
             ACK_BY: userResponse.features[0].attributes.NAME,
-            STATUS: "Acknowledged",
+            STATUS: "Acknowledged"
           });
           break;
         default:
@@ -196,25 +215,26 @@ class WqimsAlert extends WqimsObject implements Wqims {
 
       return await this.updateFeature();
     } catch (error) {
-      appLogger.error("Alert Acknowledge Error:", error instanceof Error ? error.stack : "unknown error");
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "Alert Acknowledge error" };
+      appLogger.error("Alert Status Update Error:", error instanceof Error ? error.stack : "unknown error");
+      throw error;
     }
   }
 
   static async getAlert(alertId: number): Promise<IFeature | null> {
     try {
-      const response = await queryFeatures({
-        url: WqimsAlert.featureUrl,
-        where: `OBJECTID=${alertId}`,
-        outFields: '*',
-        authentication: gisCredentialManager
-      })
-      if ("features" in response && response.features.length > 0) {
-        return response.features[0];
-      }
-      return null;
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${this.featureUrl}/query`,
+        'GET',
+        {
+          where: `OBJECTID=${alertId}`,
+          outFields: '*'
+        }
+      );
+      
+      return response.features?.[0] || null;
     } catch (error) {
-      throw { error: error instanceof Error ? error.message : "unknown error", message: "GET Alert error" };
+      appLogger.error("Alert GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw error;
     }
   }
 }

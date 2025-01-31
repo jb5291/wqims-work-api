@@ -28,14 +28,14 @@ const groupsRouter = express.Router();
  *        GROUPNAME: { type: string } 
  *        GROUPID: { type: string } 
  *        ACTIVE: { type: integer, nullable: true } 
- *        MEMBERIDS: { type: array, items: { type: string } } 
- *        THRESHOLDIDS: { type: array, items: { type: string } } 
+ *        MEMBERS: { type: array, items: { type: string } } 
+ *        THRESHOLDS: { type: array, items: { type: string } } 
  *    AddGroupData:
  *      type: object
  *      properties:
  *        GROUPNAME: { type: string } 
- *        MEMBERIDS: { type: array, items: { type: string } } 
- *        THRESHOLDIDS: { type: array, items: { type: string } } 
+ *        MEMBERS: { type: array, items: { type: string } } 
+ *        THRESHOLDS: { type: array, items: { type: string } } 
  *        ACTIVE: { type: integer, nullable: true } 
  *    GroupData:
  *      type: object
@@ -162,10 +162,9 @@ groupsRouter.get("/", /*verifyAndRefreshToken, logRequest,*/ async (req, res) =>
  *              type: string
  *              example: 'Internal Server Error'
  */
-groupsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+groupsRouter.put("/", /*verifyAndRefreshToken, logRequest,*/ async (req, res) => {
   try {
-    const group = new WqimsGroup(req.body.group);
-    const { usersToAdd = [], thresholdsToAdd = [] } = req.body;
+    const group = new WqimsGroup(req.body);
 
     const updateResult = await group.checkInactive();
     if (!updateResult.success) {
@@ -174,23 +173,23 @@ groupsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
       group.GROUPID = addResult.globalId as string;
     }
 
-    if (usersToAdd.length) {
-      const MEMBERSAddResults = await group.addGroupItems(WqimsGroup.usersRelationshipClassUrl, usersToAdd);
+    if (group.MEMBERS.length) {
+      const MEMBERSAddResults = await group.addGroupItems(WqimsGroup.usersRelationshipClassUrl, group.MEMBERS);
       if (!MEMBERSAddResults.success) {
         appLogger.warn("Group MEMBERS not added:", MEMBERSAddResults.error);
         group.MEMBERS = [];
       }
-      const newMembers = usersToAdd.filter((user: WqimsUser) => !group.MEMBERS.some(member => member.GLOBALID === user.GLOBALID));
+      const newMembers = group.MEMBERS.filter((user: WqimsUser) => !group.MEMBERS.some(member => member.GLOBALID === user.GLOBALID));
       group.MEMBERS.push(...newMembers);
     }
 
-    if (thresholdsToAdd.length) {
-      const thresholdsAddResults = await group.addGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, thresholdsToAdd);
+    if (group.THRESHOLDS.length) {
+      const thresholdsAddResults = await group.addGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, group.THRESHOLDS);
       if (!thresholdsAddResults.success) {
         appLogger.warn("Group thresholds not added:", thresholdsAddResults.error);
         group.THRESHOLDS = [];
       }
-      const newThresholds = thresholdsToAdd.filter((threshold: WqimsThreshold) => !group.THRESHOLDS.some(groupThreshold => groupThreshold.GLOBALID === threshold.GLOBALID));
+      const newThresholds = group.THRESHOLDS.filter((threshold: WqimsThreshold) => !group.THRESHOLDS.some(groupThreshold => groupThreshold.GLOBALID === threshold.GLOBALID));
       group.THRESHOLDS.push(...newThresholds);
     }
 
@@ -236,17 +235,21 @@ groupsRouter.put("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  *              type: string
  *              example: 'Internal Server Error'
  */
-groupsRouter.post("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+groupsRouter.post("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const group = new WqimsGroup(req.body);
     const updateResult = await group.softDeleteFeature();
     if (!updateResult.success) throw new Error(updateResult.error?.description || "Error updating group active status.");
 
-    const deleteMembersResult = await group.deleteGroupItems(WqimsGroup.usersRelationshipClassUrl, group.MEMBERS);
-    if (!deleteMembersResult.success) throw new Error(deleteMembersResult.error?.description);
+    if(group.MEMBERS.length) {
+      const deleteMembersResult = await group.deleteGroupItems(WqimsGroup.usersRelationshipClassUrl, group.MEMBERS);
+      if (!deleteMembersResult.success) throw new Error(deleteMembersResult.error?.description);
+    }
 
-    const deleteThresholdsResult = await group.deleteGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, group.THRESHOLDS);
-    if (!deleteThresholdsResult.success) throw new Error(deleteThresholdsResult.error?.description);
+    if(group.THRESHOLDS.length) {
+      const deleteThresholdsResult = await group.deleteGroupItems(WqimsGroup.thresholdsRelationshipClassUrl, group.THRESHOLDS);
+      if (!deleteThresholdsResult.success) throw new Error(deleteThresholdsResult.error?.description);
+    }
     res.json(group);
   } catch (error: unknown) {
     if(error instanceof Error) {

@@ -109,7 +109,7 @@ usersRouter.use(cookieParser());
  *              type: string
  *              example: 'Internal Server Error'
  */
-usersRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+usersRouter.get("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const getUserResult = await WqimsUser.getActiveFeatures();
     res.json(getUserResult.map((user) => user.attributes));
