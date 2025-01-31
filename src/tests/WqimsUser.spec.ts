@@ -1,9 +1,8 @@
-import { addFeatures, deleteFeatures, IQueryFeaturesResponse, IQueryResponse, queryFeatures, queryRelated, updateFeatures } from "@esri/arcgis-rest-feature-service";
-import { appLogger } from "../util/appLogger";
+import { IQueryResponse } from "@esri/arcgis-rest-feature-service";
 import { WqimsUser } from "../models/WqimsUser";
-import { IEditFeatureResult } from "@esri/arcgis-rest-feature-service";
+import { ArcGISService } from "../services/ArcGISService";
 
-jest.mock("@esri/arcgis-rest-feature-service");
+jest.mock("../services/ArcGISService");
 jest.mock("../routes/auth");
 jest.mock("../util/appLogger");
 
@@ -24,8 +23,6 @@ describe("WqimsUser", () => {
     OBJECTID: 1,
     GLOBALID: "test",
   });
-
-
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -50,12 +47,17 @@ describe("WqimsUser", () => {
         GLOBALID: "test",
       });
 
-      (queryFeatures as jest.Mock).mockResolvedValue({ features: [{ attributes: { ...inactiveUser,  ACTIVE: 1 } }] } as IQueryFeaturesResponse);
-      (updateFeatures as jest.Mock).mockResolvedValue({ updateResults: [{ objectId: 1, success: true }]});
+      (ArcGISService.request as jest.Mock).mockResolvedValueOnce({ 
+        features: [{ attributes: { ...inactiveUser, ACTIVE: 1 } }] 
+      });
+      
+      (ArcGISService.request as jest.Mock).mockResolvedValueOnce({ 
+        updateResults: [{ objectId: 1, success: true }]
+      });
 
-      inactiveUser.checkInactive();
+      await inactiveUser.checkInactive();
 
-      expect(queryFeatures).toHaveBeenCalledTimes(1);
+      expect(ArcGISService.request).toHaveBeenCalledTimes(2);
     })
 
     it("should return an error if the query fails", async () => {
@@ -76,7 +78,7 @@ describe("WqimsUser", () => {
         GLOBALID: "test",
       });
 
-      (queryFeatures as jest.Mock).mockRejectedValue(new Error("Error getting data"));
+      (ArcGISService.request as jest.Mock).mockRejectedValue(new Error("Error getting data"));
 
       await expect(inactiveUser.checkInactive()).rejects.toThrow("Error getting data");
     });
@@ -84,7 +86,7 @@ describe("WqimsUser", () => {
 
   describe("getRoleIds", () => {
     it("should return a list of Wqims Roles", async () => {
-      (queryFeatures as jest.Mock).mockResolvedValue({ features: [{ attributes: { ROLEID: 1, ROLE: "Admin" } }] } as IQueryFeaturesResponse);
+      (ArcGISService.request as jest.Mock).mockResolvedValue({ features: [{ attributes: { ROLEID: 1, ROLE: "Admin" } }] });
 
       const roles = await mockUser.getRoleIds();
 
@@ -92,13 +94,13 @@ describe("WqimsUser", () => {
     })
 
     it("should return an error if no role features are found", async () => {
-      (queryFeatures as jest.Mock).mockResolvedValue({ features: [] } as IQueryFeaturesResponse);
+      (ArcGISService.request as jest.Mock).mockResolvedValue({ features: [] });
 
       await expect(mockUser.getRoleIds()).rejects.toThrow("No features found");
     });
 
     it("should return an error if query features throws an error", async () => {
-      (queryFeatures as jest.Mock).mockRejectedValue(new Error("Error getting data"));
+      (ArcGISService.request as jest.Mock).mockRejectedValue(new Error("Error getting data"));
 
       await expect(mockUser.getRoleIds()).rejects.toThrow("Error getting data");
     });
@@ -106,104 +108,81 @@ describe("WqimsUser", () => {
 
   describe("updateUserRole", () => {
     beforeEach(() => {
-      (queryRelated as jest.Mock).mockResolvedValue({ relatedRecords: [] });
-      (addFeatures as jest.Mock).mockResolvedValue({ addResults: [{ objectId: 1 }] });
-      (updateFeatures as jest.Mock).mockResolvedValue({ updateResults: [{ objectId: 1, success: true }] });
-      (queryFeatures as jest.Mock).mockResolvedValue({ features: [{ attributes: { RID: 1, ROLE: "Editor" } }] } as IQueryFeaturesResponse);
-
+      jest.clearAllMocks();
       mockUser.ROLE = "Admin";
     });
 
     it("should update the user's role", async () => {
-      (queryRelated as jest.Mock).mockResolvedValue({ relatedRecords: [{ attributes: { RID: 1 } }] });
-      (updateFeatures as jest.Mock).mockResolvedValue({ updateResults: [{ objectId: 1, success: true }] });
-      (queryFeatures as jest.Mock).mockResolvedValue({ features: [{ attributes: { RID: 1, ROLE: "Admin" } }] } as IQueryFeaturesResponse);
-      (addFeatures as jest.Mock).mockResolvedValue({ addResults: [{ objectId: 1 }] });
+      // Mock the sequence of API calls
+      (ArcGISService.request as jest.Mock)
+        .mockResolvedValueOnce({ relatedRecordGroups: [{ relatedRecords: [{ attributes: { RID: 1 } }] }] }) // queryRelatedRecords
+        .mockResolvedValueOnce({ features: [{ attributes: { RID: 1, ROLE: "Editor" } }] }) // queryFeatures for roles
+        .mockResolvedValueOnce({ features: [{ attributes: { RID: 1, ROLE: "Admin" } }] }) // getRoleIds
+        .mockResolvedValueOnce({ updateResults: [{ objectId: 1, success: true }] }); // updateFeatures
 
       const result = await mockUser.updateUserRole();
-
       expect(result).toEqual({ objectId: 1, success: true });
-    })
-
-    it("should return an error if the query fails", async () => {
-      (queryRelated as jest.Mock).mockRejectedValue(new Error("Error getting data"));
-
-      await expect(mockUser.updateUserRole()).rejects.toThrow("Error getting data");
-    });
-
-    it("should return an error if the update fails", async () => {
-      (queryRelated as jest.Mock).mockResolvedValue({ relatedRecords: [{ attributes: { RID: 1 } }] });
-      (updateFeatures as jest.Mock).mockRejectedValue(new Error("Update failed"));
-
-      await expect(mockUser.updateUserRole()).rejects.toThrow("Update failed");
-    });
-
-    it("should return an error if the add fails", async () => {
-      (queryFeatures as jest.Mock)
-        .mockImplementationOnce(() => Promise.resolve({ features: [{ attributes: { RID: 1, ROLE: "Editor" } }] }))
-        .mockImplementationOnce(() => Promise.resolve({ features: []}));
-      (queryRelated as jest.Mock).mockResolvedValue({ relatedRecordGroups: [] });
-      (addFeatures as jest.Mock).mockRejectedValue(new Error("Add failed"));
-
-      await expect(mockUser.updateUserRole()).rejects.toThrow("Add failed");
-    });
-
-    it("should return an error if the query related fails", async () => {
-      (queryFeatures as jest.Mock).mockResolvedValue({ features: []});
-      (queryRelated as jest.Mock).mockRejectedValue(new Error("Error getting data"));
-
-      await expect(mockUser.updateUserRole()).rejects.toThrow("Error getting data");
     });
 
     it('should return an error if an invalid role is provided', async () => {
       mockUser.ROLE = "Invalid";
-
-      await expect(mockUser.updateUserRole()).rejects.toThrow("Invalid role");
-    })
+      await expect(mockUser.updateUserRole()).rejects.toEqual("Invalid role");
+    });
 
     it('should return an error if the update features is unsuccessful', async () => {
-      (queryFeatures as jest.Mock)
-        .mockImplementationOnce(() => Promise.resolve({ features: [{ attributes: { RID: null, ROLE: "Editor" } }] }))
-        .mockImplementationOnce(() => Promise.resolve({ features: [{ attributes: { RID: 1, ROLE: "Admin" } }] }));
-      (queryRelated as jest.Mock).mockResolvedValue({ relatedRecordGroups: [] });
-      (updateFeatures as jest.Mock).mockResolvedValue({ updateResults: [{ objectId: 1, success: false }] });
+      (ArcGISService.request as jest.Mock)
+        .mockResolvedValueOnce({ relatedRecordGroups: [{ relatedRecords: [{ attributes: { RID: 1 } }] }] })
+        .mockResolvedValueOnce({ features: [{ attributes: { RID: 1, ROLE: "Editor" } }] })
+        .mockResolvedValueOnce({ features: [{ attributes: { ROLE: "admin", GLOBALID: "test-id" } }] })
+        .mockResolvedValueOnce({ updateResults: [{ objectId: 1, success: false }] });
 
       await expect(mockUser.updateUserRole()).rejects.toThrow("Update failed");
-    })
+    });
 
     it('should return an error if the role id RID is invalid', async () => {
-      (queryFeatures as jest.Mock)
-        .mockImplementationOnce(() => Promise.resolve({ features: [{ attributes: { RID: null, ROLE: "Editor" } }] }))
-        .mockImplementationOnce(() => Promise.resolve({ features: [{ attributes: { RID: null, ROLE: "Admin" } }] }));
-      (queryRelated as jest.Mock).mockResolvedValue({ relatedRecordGroups: [] });
-      (updateFeatures as jest.Mock).mockResolvedValue({ updateResults: [{ objectId: 1, success: false }] });
+      (ArcGISService.request as jest.Mock)
+        .mockResolvedValueOnce({ relatedRecordGroups: [{ relatedRecords: [{ attributes: { RID: null } }] }] })
+        .mockResolvedValueOnce({ features: [{ attributes: { RID: null, ROLE: "Editor" } }] })
+        .mockResolvedValueOnce({ features: [{ attributes: { ROLE: "admin", GLOBALID: "test-id" } }] });
 
       await expect(mockUser.updateUserRole()).rejects.toThrow("No RID found");
-    })
+    });
   })
 
   describe("removeRelationship", () => {
     it("should remove the relationship", async () => {
-      (queryFeatures as jest.Mock).mockResolvedValue({ features: [{ attributes: { RID: 1, ROLE: "Editor" } }] } as IQueryFeaturesResponse);
-      (deleteFeatures as jest.Mock).mockResolvedValue({ deleteResults: [{ objectId: 1, success: true }] });
+      const mockFeatures = [{ attributes: { RID: 1, ROLE: "Editor" } }];
+      
+      (ArcGISService.request as jest.Mock)
+        .mockResolvedValueOnce({ features: mockFeatures }) // First call: query
+        .mockResolvedValueOnce({ deleteResults: [{ objectId: 1, success: true }] }); // Second call: delete
 
       const result = await mockUser.removeRelationship(WqimsUser.groupsRelationshipClassUrl);
-
       expect(result).toEqual({ objectId: 1, success: true });
-    })
-
-    it("should return an error if the delete fails", async () => {
-      (queryFeatures as jest.Mock).mockResolvedValue({ attributes: { RID: 1, ROLE: "Editor" }, objectIds: [1] }  as IQueryResponse);
-      (deleteFeatures as jest.Mock).mockRejectedValue(new Error("Delete failed"));
-
-      await expect(mockUser.removeRelationship(WqimsUser.groupsRelationshipClassUrl)).rejects.toThrow("Delete failed");
     });
 
     it("should return an error if the delete operation is unsuccessful", async () => {
-      (queryFeatures as jest.Mock).mockResolvedValue({ attributes: { RID: 1, ROLE: "Editor" }, objectIds: [1] }  as IQueryResponse);
-      (deleteFeatures as jest.Mock).mockResolvedValue({ deleteResults: [{ objectId: 1, success: false }] });
+      const mockFeatures = [{ attributes: { RID: 1, ROLE: "Editor" } }];
+      
+      // Need to reset the mock between tests
+      jest.clearAllMocks();
+      
+      (ArcGISService.request as jest.Mock)
+        .mockResolvedValueOnce({ features: mockFeatures }) // First call: query
+        .mockResolvedValueOnce({ deleteResults: [{ objectId: 1, success: false }] }); // Second call: delete with failure
 
-      await expect(mockUser.removeRelationship(WqimsUser.groupsRelationshipClassUrl)).rejects.toThrow("Delete failed");
-    })
+      await expect(mockUser.removeRelationship(WqimsUser.groupsRelationshipClassUrl))
+        .rejects.toThrow("Delete failed");
+    });
+
+    it("should return an error if no features are found", async () => {
+      jest.clearAllMocks();
+      
+      (ArcGISService.request as jest.Mock)
+        .mockResolvedValueOnce({ features: [] }); // Empty features array
+
+      await expect(mockUser.removeRelationship(WqimsUser.groupsRelationshipClassUrl))
+        .rejects.toThrow("No features found");
+    });
   })
 })

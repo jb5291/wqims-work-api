@@ -1,21 +1,18 @@
-import { WqimsObject } from "./Wqims";
-import {
-  addFeatures,
-  deleteFeatures,
-  IEditFeatureResult,
-  IFeature, IQueryFeaturesResponse,
-  IQueryRelatedResponse,
-  IQueryResponse,
-  IRelatedRecordGroup,
-  queryFeatures,
-  queryRelated,
-  updateFeatures,
-} from "@esri/arcgis-rest-feature-service";
+import { WqimsObject, IEditFeatureResult, IFeature, IQueryResponse } from "./Wqims";
 import { authConfig } from "../util/secrets";
-import { gisCredentialManager } from "../routes/auth";
 import { Request } from "express";
 import axios from "axios";
 import { Wqims } from "./Wqims.interface";
+import { ArcGISService } from '../services/ArcGISService';
+import { appLogger } from "../util/appLogger";
+
+interface IQueryRelatedResponse {
+  relatedRecordGroups?: IRelatedRecordGroup[];
+}
+
+interface IRelatedRecordGroup {
+  relatedRecords?: IFeature[];
+}
 
 type WqimsRole = {
   OBJECTID: number;
@@ -117,11 +114,15 @@ class WqimsUser extends WqimsObject implements Wqims {
    */
   async checkInactive(): Promise<IEditFeatureResult> {
     try {
-      const response = await queryFeatures({
-        url: this.featureUrl,
-        where: `ACTIVE=0 AND EMAIL='${this.EMAIL}'`,
-        authentication: gisCredentialManager,
-      }) as IQueryFeaturesResponse;
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${this.featureUrl}/query`,
+        'GET',
+        {
+          where: `ACTIVE=0 AND EMAIL='${this.EMAIL}'`,
+          outFields: "*",
+          returnGeometry: false
+        }
+      );
   
       this.PHONENUMBER = this.PHONENUMBER || "none";
   
@@ -142,15 +143,18 @@ class WqimsUser extends WqimsObject implements Wqims {
    */
   async getRoleIds(): Promise<WqimsRole[]> {
     try {
-      const response = await queryFeatures({
-        url: WqimsUser.rolesUrl,
-        where: "1=1",
-        outFields: "*",
-        authentication: gisCredentialManager,
-      }) as IQueryFeaturesResponse;
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${WqimsUser.rolesUrl}/query`,
+        'POST',
+        {
+          where: "1=1",
+          outFields: "*",
+          returnGeometry: false
+        }
+      );
   
-      if (response.features.length) {
-        return response.features.map((feature: IFeature) => feature.attributes as WqimsRole);
+      if (response.features?.length) {
+        return response.features.map(feature => feature.attributes as WqimsRole);
       } else {
         throw new Error("No features found");
       }
@@ -166,136 +170,124 @@ class WqimsUser extends WqimsObject implements Wqims {
    */
   async updateUserRole(): Promise<IEditFeatureResult | undefined> {
     const objectId: number = this.OBJECTID || 0;
-    let response: IQueryRelatedResponse;
     const allowedRoles: string[] = ["Admin", "Editor", "Viewer"];
     const userRole = this.ROLE === "Administrator" ? "Admin" : this.ROLE;
+    
     if (!allowedRoles.includes(userRole)) {
       return Promise.reject("Invalid role");
     }
 
     try {
-      response = await queryRelated({
-        url: this.featureUrl,
-        objectIds: [this.objectId],
-        outFields: ["*"],
-        relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
-        authentication: gisCredentialManager,
-      });
-    } catch (error) {
-      return Promise.reject(error);
-    }
+      const response = await ArcGISService.request<IQueryRelatedResponse>(
+        `${this.featureUrl}/queryRelatedRecords`,
+        'GET',
+        {
+          objectIds: [this.objectId],
+          outFields: ["*"],
+          relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
+          returnGeometry: false
+        }
+      );
 
-    const roles: WqimsRole[] = await this.getRoleIds();
-    const relatedRecordGroup: IRelatedRecordGroup = response.relatedRecordGroups?.[0];
-    const relatedRecord: IFeature | undefined = relatedRecordGroup?.relatedRecords?.[0];
+      const relatedRecordGroup = response.relatedRecordGroups?.[0];
+      const relatedRecord = relatedRecordGroup?.relatedRecords?.[0];
 
-    if (relatedRecord?.attributes.ROLE === this.ROLE.toLowerCase()) {
-      return { objectId, success: true };
-    }
-    let userRolesQueryResponse: IQueryFeaturesResponse;
-
-    try {
-      userRolesQueryResponse = await queryFeatures({
-        url: WqimsUser.rolesRelationshipClassUrl,
-        where: `USER_ID='${this.GLOBALID}'`,
-        outFields: "*",
-        authentication: gisCredentialManager,
-      }) as IQueryFeaturesResponse;
-    } catch (error) {
-      return Promise.reject(error);
-    }
-    if (userRolesQueryResponse.features?.length) {
-      let rid = null;
-      let userRolesUpdateResponse;
-
-      try {
-        rid = userRolesQueryResponse.features[0].attributes?.RID;
-        if(!rid) { throw new Error("No RID found"); }
-      } catch (error) {
-        return Promise.reject(error);
+      if (relatedRecord?.attributes.ROLE === this.ROLE.toLowerCase()) {
+        return { objectId, success: true };
       }
 
-      try {
-        userRolesUpdateResponse = await updateFeatures({
-          url: WqimsUser.rolesRelationshipClassUrl,
-          features: [
-            {
+      const userRolesQueryResponse = await ArcGISService.request<IQueryResponse>(
+        `${WqimsUser.rolesRelationshipClassUrl}/query`,
+        'POST',
+        {
+          where: `USER_ID='${this.GLOBALID}'`,
+          outFields: "*",
+          returnGeometry: false
+        }
+      );
+
+      const roles: WqimsRole[] = await this.getRoleIds();
+
+      if (userRolesQueryResponse.features?.length) {
+        const rid = userRolesQueryResponse.features[0].attributes?.RID;
+        if (!rid) throw new Error("No RID found");
+
+        const userRolesUpdateResponse = await ArcGISService.request<{ updateResults: IEditFeatureResult[] }>(
+          `${WqimsUser.rolesRelationshipClassUrl}/updateFeatures`,
+          'POST',
+          {
+            features: [{
               attributes: {
                 RID: rid,
                 USER_ID: this.GLOBALID,
                 ROLE_ID: roles.find((role: WqimsRole) => role.ROLE === this.ROLE.toLowerCase())?.GLOBALID,
-              },
-            },
-          ],
-          authentication: gisCredentialManager,
-        });
-      } catch (error) {
-        return Promise.reject(error);
-      }
+              }
+            }]
+          }
+        );
 
-      try {
         if (userRolesUpdateResponse.updateResults[0].success) {
           return userRolesUpdateResponse.updateResults[0];
         }
         throw new Error("Update failed");
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    } else {
-      let roleAddResponse;
-      try {
-        roleAddResponse = await addFeatures({
-          url: WqimsUser.rolesRelationshipClassUrl,
-          authentication: gisCredentialManager,
-          features: [
-            {
+      } else {
+        const roleAddResponse = await ArcGISService.request<{ addResults: IEditFeatureResult[] }>(
+          `${WqimsUser.rolesRelationshipClassUrl}/addFeatures`,
+          'POST',
+          {
+            features: [{
               attributes: {
                 USER_ID: this.GLOBALID,
                 ROLE_ID: roles.find((role: WqimsRole) => role.ROLE === this.ROLE.toLowerCase())?.GLOBALID,
-              },
-            },
-          ],
-        });
-      } catch (error) {
-        return Promise.reject(error);
-      }
+              }
+            }]
+          }
+        );
 
-      if (roleAddResponse.addResults[0].success) {
-        return roleAddResponse.addResults[0];
+        if (roleAddResponse.addResults[0].success) {
+          return roleAddResponse.addResults[0];
+        }
+        return Promise.reject(roleAddResponse.addResults[0]?.error?.description);
       }
-      return Promise.reject(roleAddResponse.addResults[0]?.error?.description);
+    } catch (error) {
+      return Promise.reject(error);
     }
   }
 
   /**
    * Removes relationship records from M2M tables
    * @param relClassUrl relationship class url
-   * @returns {Promise<IEditFeatureResult | undefined>} A promise that resolves to the result of the remove relationship operation.
+   * @returns {Promise<IEditFeatureResult>} A promise that resolves to the result of the remove relationship operation.
    */
-  async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult | undefined> {
+  async removeRelationship(relClassUrl: string): Promise<IEditFeatureResult> {
     try {
-      const queryRelResponse = await queryFeatures({
-        url: relClassUrl,
-        where: `USER_ID='${this.GLOBALID}'`,
-        returnIdsOnly: true,
-        authentication: gisCredentialManager,
-      }) as IQueryResponse;
-  
-      if (queryRelResponse.objectIds?.length) {
-        const deleteRelResponse = await deleteFeatures({
-          url: relClassUrl,
-          objectIds: queryRelResponse.objectIds,
-          authentication: gisCredentialManager,
-        });
-  
-        if (deleteRelResponse.deleteResults[0].success) {
-          return deleteRelResponse.deleteResults[0];
-        } else {
-          throw new Error("Delete failed");
+      const queryResponse = await ArcGISService.request<IQueryResponse>(
+        `${relClassUrl}/query`,
+        'GET',
+        {
+          where: `USER_ID='${this.GLOBALID}'`,
+          outFields: "*",
+          returnGeometry: false
         }
-      } else {
-        return { objectId: this.OBJECTID || 0, success: true };
+      );
+
+      if (!queryResponse.features?.length) {
+        throw new Error("No features found");
       }
+
+      const deleteResponse = await ArcGISService.request<{ deleteResults: IEditFeatureResult[] }>(
+        `${relClassUrl}/deleteFeatures`,
+        'POST',
+        {
+          objectIds: queryResponse.features.map(feature => feature.attributes.RID)
+        }
+      );
+
+      if (!deleteResponse.deleteResults[0].success) {
+        throw new Error("Delete failed");
+      }
+
+      return deleteResponse.deleteResults[0];
     } catch (error) {
       return Promise.reject(error);
     }
@@ -382,8 +374,8 @@ class WqimsUser extends WqimsObject implements Wqims {
     }
 
     axios.request(options)
-        .then(response => console.log(response.data))
-        .catch(error => console.error(error));
+        .then(response => appLogger.info(response.data))
+        .catch(error => appLogger.error(error));
   }
 
   /**
@@ -400,8 +392,8 @@ class WqimsUser extends WqimsObject implements Wqims {
     }
 
     axios.request(options)
-        .then(response => console.log(response.data))
-        .catch(error => console.error(error));
+        .then(response => appLogger.info(response.data))
+        .catch(error => appLogger.error(error));
   }
 
   /**
@@ -454,23 +446,26 @@ class WqimsUser extends WqimsObject implements Wqims {
     };
 
     axios.request(options)
-        .then(response => console.log(response.data))
-        .catch(error => console.error(error));
+        .then(response => appLogger.info(response.data))
+        .catch(error => appLogger.error(error));
   }
 
   static async getUser(userId: number): Promise<IFeature | null> {
     try {
-      const response = await queryFeatures({
-        url: WqimsUser.featureUrl,
-        objectIds: [userId],
-        outFields: "*",
-        authentication: gisCredentialManager,
-      });
-      if("features" in response && response.features.length) {
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${WqimsUser.featureUrl}/query`,
+        'POST',
+        {
+          objectIds: [userId],
+          outFields: "*",
+          returnGeometry: false
+        }
+      );
+      
+      if (response.features?.length) {
         return response.features[0];
-      } else {
-        return null;
       }
+      return null;
     } catch (error) {
       return Promise.reject(error);
     }

@@ -10,7 +10,8 @@
     "skipLibCheck": true,                                /* Skip type checking all .d.ts files. */
     "resolveJsonModule": true,
     "declaration": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "types": ["node", "jest"]    /* Add jest to the types array */
   },
   "include": [
     "src/**/*.ts",

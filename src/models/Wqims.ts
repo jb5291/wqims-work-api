@@ -1,15 +1,25 @@
-import {
-  addFeatures,
-  IEditFeatureResult,
-  IFeature,
-  IQueryFeaturesResponse,
-  IQueryResponse,
-  queryFeatures,
-  updateFeatures,
-} from "@esri/arcgis-rest-feature-service";
-import { gisCredentialManager } from "../routes/auth";
+import { ArcGISService } from '../services/ArcGISService';
 import { appLogger } from "../util/appLogger";
 import { v4 as uuidv4 } from "uuid";
+
+export interface IEditFeatureResult {
+  objectId: number;
+  globalId?: string;
+  success: boolean;
+  error?: {
+    code: number;
+    description: string;
+  };
+}
+
+export interface IFeature {
+  attributes: Record<string, any>;
+}
+
+export interface IQueryResponse {
+  objectIds?: number[];
+  features?: IFeature[];
+}
 
 /**
  * Class representing a WqimsObject.
@@ -37,14 +47,19 @@ class WqimsObject {
    */
   static async getActiveFeatures(): Promise<IFeature[]> {
     try {
-      const response = await queryFeatures({
-        url: this.featureUrl,
-        where: "ACTIVE=1",
-        outFields: "*",
-        authentication: gisCredentialManager,
-      });
-      if ("features" in response) return response.features;
-      throw new Error("Error getting data");
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${this.featureUrl}/query`,
+        'GET',
+        {
+          where: "ACTIVE=1",
+          outFields: "*",
+          returnGeometry: false
+        }
+      );
+      
+      if (!response.features) throw new Error("Error getting data");
+      return response.features;
+      
     } catch (error) {
       appLogger.error("GET Error:", error instanceof Error ? error.stack : "unknown error");
       throw { error: error instanceof Error ? error.message : "unknown error", message: "GET error" };
@@ -84,20 +99,32 @@ class WqimsObject {
     else if ("GROUPID" in this) this.GROUPID = `{${uuidv4().toUpperCase()}}`;
     this.active = 1;
 
-    const { OBJECTID, ...objectWithoutOID } = this;
-    const addResponse = await addFeatures({
-      url: this.featureUrl,
-      features: [{ attributes: objectWithoutOID }],
-      authentication: gisCredentialManager,
-    });
+    const { OBJECTID, featureUrl, ...objectWithoutOID } = this;
+    
+    try {
+      const response = await ArcGISService.request<{ addResults: IEditFeatureResult[] }>(
+        `${this.featureUrl}/addFeatures`,
+        'POST',
+        {
+          features: [{
+            attributes: objectWithoutOID
+          }]
+        }
+      );
 
-    this.OBJECTID = addResponse.addResults[0].objectId;
-    if("GLOBALID" in this) {
-      return { objectId: this.OBJECTID, success: addResponse.addResults[0].success, globalId: this.GLOBALID as string }
-    } else if("GROUPID" in this) {
-      return  { objectId: this.OBJECTID, success: addResponse.addResults[0].success, globalId: this.GROUPID as string };
-    } else {
-      return addResponse.addResults[0];
+      const result = response.addResults[0];
+      this.OBJECTID = result.objectId;
+
+      if("GLOBALID" in this) {
+        return { ...result, globalId: this.GLOBALID as string };
+      } else if("GROUPID" in this) {
+        return { ...result, globalId: this.GROUPID as string };
+      } else {
+        return result;
+      }
+    } catch (error) {
+      appLogger.error("Add feature error:", error);
+      throw error;
     }
   }
 
@@ -106,12 +133,19 @@ class WqimsObject {
    * @returns A promise that resolves to the result of the update operation.
    */
   async updateFeature(): Promise<IEditFeatureResult> {
-    const response = await updateFeatures({
-      url: this.featureUrl,
-      authentication: gisCredentialManager,
-      features: [{ attributes: this }],
-    });
-    return response.updateResults[0];
+    try {
+      const response = await ArcGISService.request<{ updateResults: IEditFeatureResult[] }>(
+        `${this.featureUrl}/updateFeatures`,
+        'POST',
+        {
+          features: [{ attributes: this }]
+        }
+      );
+      return response.updateResults[0];
+    } catch (error) {
+      appLogger.error("Update feature error:", error);
+      throw error;
+    }
   }
 
   /**
@@ -121,12 +155,20 @@ class WqimsObject {
   async softDeleteFeature(): Promise<IEditFeatureResult> {
     this.ACTIVE = 0;
     const { featureUrl, ...objectWithoutUrl } = this;
-    const response = await updateFeatures({
-      url: this.featureUrl,
-      features: [{ attributes: objectWithoutUrl }],
-      authentication: gisCredentialManager,
-    });
-    return response.updateResults[0];
+    
+    try {
+      const response = await ArcGISService.request<{ updateResults: IEditFeatureResult[] }>(
+        `${this.featureUrl}/updateFeatures`,
+        'POST',
+        {
+          features: [{ attributes: objectWithoutUrl }]
+        }
+      );
+      return response.updateResults[0];
+    } catch (error) {
+      appLogger.error("Soft delete feature error:", error);
+      throw error;
+    }
   }
 
   /**
@@ -134,33 +176,50 @@ class WqimsObject {
    * @param response - The response from a query operation.
    * @returns A promise that resolves to the result of the reactivation operation.
    */
-  async reactivateFeature(response: IQueryFeaturesResponse | IQueryResponse): Promise<IEditFeatureResult> {
-    if ("features" in response && response.features.length > 0) {
+  async reactivateFeature(response: IQueryResponse): Promise<IEditFeatureResult> {
+    if (response.features && response.features.length > 0) {
       const existingObject = response.features[0].attributes;
       this.objectId = existingObject.OBJECTID;
       this.active = 1;
 
-      const updateResponse = await updateFeatures({
-        url: this.featureUrl,
-        features: [{ attributes: this }],
-        authentication: gisCredentialManager,
-      });
-
-      return updateResponse.updateResults[0];
+      try {
+        const updateResponse = await ArcGISService.request<{ updateResults: IEditFeatureResult[] }>(
+          `${this.featureUrl}/updateFeatures`,
+          'POST',
+          {
+            features: [{ attributes: this }]
+          }
+        );
+        return updateResponse.updateResults[0];
+      } catch (error) {
+        appLogger.error("Reactivate feature error:", error);
+        throw error;
+      }
     } else {
-      return { objectId: -1, success: false, error: { code: 999, description: "No inactive record found" } };
+      return { 
+        objectId: -1, 
+        success: false, 
+        error: { 
+          code: 999, 
+          description: "No inactive record found" 
+        } 
+      };
     }
   }
 
   static async getObject(objectId: number): Promise<IFeature | null> {
     try {
-      const response = await queryFeatures({
-        url: this.featureUrl,
-        where: `OBJECTID=${objectId} AND ACTIVE=1`,
-        outFields: "*",
-        authentication: gisCredentialManager,
-      });
-      if ("features" in response && response.features.length > 0) {
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${this.featureUrl}/query`,
+        'POST',
+        {
+          where: `OBJECTID=${objectId} AND ACTIVE=1`,
+          outFields: "*",
+          returnGeometry: false
+        }
+      );
+      
+      if (response.features && response.features.length > 0) {
         return response.features[0];
       }
       return null;

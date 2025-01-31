@@ -76,9 +76,9 @@ export const authConfig = {
         issuer: `https://sts.windows.net/${getEnvVal("MS_TENANT_ID")}/`,
     },
     arcgis: {
-        id: getEnvVal("WQIMS_REST_APP_ID"),
-        secret: getEnvVal("WQIMS_REST_APP_SECRET"),
-        token_url: getEnvVal("WQIMS_TOKEN_URL"),
+        username: process.env.ARCGIS_USERNAME || '',
+        password: process.env.ARCGIS_PASSWORD || '',
+        token_url: process.env.ARCGIS_TOKEN_URL || '',
         feature_url: getEnvVal("WQIMS_REST_ROOT"),
         layers: {
             alerts: getEnvVal("WQIMS_ALERTS_LYR_ID"),
@@ -142,5 +142,5 @@ if (emailRecipientsList.length < 1) {
 }; */
 
 // Test SMS configuration
-export const TEST_SMS_NUMBER = getEnvVal("TEST_SMS_NUMBER");
-export const TEST_SMS_NUMBER_CARRIER = getEnvVal("TEST_SMS_NUMBER_CARRIER");
+// export const TEST_SMS_NUMBER = getEnvVal("TEST_SMS_NUMBER");
+// export const TEST_SMS_NUMBER_CARRIER = getEnvVal("TEST_SMS_NUMBER_CARRIER");
