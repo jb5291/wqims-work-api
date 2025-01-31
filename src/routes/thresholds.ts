@@ -163,7 +163,8 @@ thresholdsRouter.put("/", /* verifyAndRefreshToken, logRequest, */ async (req, r
       const thresholdAddResult = await threshold.addFeature();
       if (!thresholdAddResult?.success) throw new Error(thresholdAddResult.error?.description);
     }
-    res.json(threshold);
+    const { featureUrl, ...thresholdObject } = threshold;
+    res.json(thresholdObject);
   } catch (error: unknown) {
     if(error instanceof Error) {
       appLogger.error("Threshold PUT Error:", error.stack);

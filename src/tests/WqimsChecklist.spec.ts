@@ -386,7 +386,7 @@ describe("WqimsChecklist", () => {
         CREATED_AT: 0, 
         UPDATED_AT: 0, 
         items: [],
-        GLOBALID: undefined  // Set to undefined instead of deleting
+        GLOBALID: undefined
       });
 
       const mockAddResult = { 
@@ -399,7 +399,8 @@ describe("WqimsChecklist", () => {
       });
 
       const result = await mockTemplate.addItemFeature();
-      expect(result).toEqual(mockAddResult);
+      expect(result).toMatchObject(mockAddResult);
+      expect(result.globalId).toMatch(/^\{[A-F0-9-]+\}$/);
     });
   })
 
