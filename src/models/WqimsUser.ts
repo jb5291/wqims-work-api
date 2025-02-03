@@ -272,7 +272,7 @@ class WqimsUser extends WqimsObject implements Wqims {
       );
 
       if (!queryResponse.features?.length) {
-        throw new Error("No features found");
+        return { objectId: this.OBJECTID || 0, success: true };
       }
 
       const deleteResponse = await ArcGISService.request<{ deleteResults: IEditFeatureResult[] }>(
@@ -454,20 +454,18 @@ class WqimsUser extends WqimsObject implements Wqims {
     try {
       const response = await ArcGISService.request<IQueryResponse>(
         `${WqimsUser.featureUrl}/query`,
-        'POST',
+        'GET',
         {
-          objectIds: [userId],
-          outFields: "*",
+          where: `OBJECTID=${userId}`,
+          outFields: '*',
           returnGeometry: false
         }
       );
       
-      if (response.features?.length) {
-        return response.features[0];
-      }
-      return null;
+      return response.features?.[0] || null;
     } catch (error) {
-      return Promise.reject(error);
+      appLogger.error("User GET Error:", error instanceof Error ? error.stack : "unknown error");
+      throw error;
     }
   }
 

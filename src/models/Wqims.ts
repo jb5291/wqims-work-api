@@ -104,25 +104,51 @@ class WqimsObject {
     else if ("GROUPID" in this) this.GROUPID = `{${uuidv4().toUpperCase()}}`;
     this.active = 1;
 
-    const { OBJECTID, featureUrl, ...objectWithoutOID } = this;
+    // Create a clean copy of the object without class methods and internal properties
+    const { featureUrl, OBJECTID, ...attributes } = Object.assign({}, this) as {
+      featureUrl: string;
+      OBJECTID?: number;
+      ACTIVE?: number;
+      NAME?: string;
+      EMAIL?: string;
+      DEPARTMENT?: string;
+      POSITION?: string;
+      DIVISION?: string;
+      ROLE?: string;
+      PHONENUMBER?: string;
+      SECONDARYPHONENUMBER?: string;
+      GLOBALID?: string;
+      RAPIDRESPONSETEAM?: number;
+      STARTTIME?: string;
+      ENDTIME?: string;
+    };
     
+    // Convert nulls to empty strings for non-nullable fields
+    attributes.DIVISION = attributes.DIVISION || '';
+
     try {
+      appLogger.debug("Adding feature with attributes:", attributes);
       const response = await ArcGISService.request<{ addResults: IEditFeatureResult[] }>(
         `${this.featureUrl}/addFeatures`,
         'POST',
         {
           features: [{
-            attributes: objectWithoutOID
+            attributes
           }]
         }
       );
 
+      appLogger.debug("Add feature response:", response);
       const result = response.addResults[0];
+      if (!result.success) {
+        throw new Error(result.error?.description || "Add feature failed");
+      }
+      
       this.OBJECTID = result.objectId;
 
-      if("GLOBALID" in this) {
+      if ("GLOBALID" in this) {
         return { ...result, globalId: this.GLOBALID as string };
-      } else if("GROUPID" in this) {
+      } else if ("GROUPID" in this) {
         return { ...result, globalId: this.GROUPID as string };
       } else {
         return result;
@@ -139,14 +165,19 @@ class WqimsObject {
    */
   async updateFeature(): Promise<IEditFeatureResult> {
     try {
+      // Create clean copy like in addFeature
+      const { featureUrl, ...attributes } = Object.assign({}, this);
+      
+      appLogger.debug("Updating feature with attributes:", attributes);
       const response = await ArcGISService.request<{ updateResults: IEditFeatureResult[] }>(
         `${this.featureUrl}/updateFeatures`,
         'POST',
         {
-          features: [{ attributes: this }]
+          features: [{ attributes: attributes }]
         }
       );
       
+      appLogger.debug("Update feature response:", response);
       if (!response.updateResults[0].success) {
         throw new Error(response.updateResults[0].error?.description || "Update failed");
       }

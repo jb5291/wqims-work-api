@@ -279,22 +279,27 @@ usersRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
   }
 });
 
-// usersRouter.get("/:id", /* verifyAndRefreshToken, logRequest ,*/ async (req, res) => {
-//   try {
-//     const userId = parseInt(req.params.id);
-//     const user = await WqimsUser.getUser(userId);
-//     if (user) {
-//       res.json(user.attributes);
-//     } else {
-//       res.status(404).send({ error: "User not found", message: "User GET error" });
-//     }
-//   } catch (error) {
-//     appLogger.error("User GET Error:", error);
-//     res.status(500).send({ error, message: "User GET error" });
-//   }
-// });
-
-usersRouter.use("/search", async (req, res) => {
+/**
+ * @swagger
+ * /users/search:
+ *  get:
+ *    summary: Search users in Active Directory
+ *    description: Searches for users in AD based on query string
+ *    tags:
+ *      - Users
+ *    parameters:
+ *      - in: query
+ *        name: filter
+ *        required: true
+ *        schema:
+ *          type: string
+ *    responses:
+ *      '200':
+ *        description: List of matching users
+ *      '500':
+ *        description: Internal Server Error
+ */
+usersRouter.get("/search", async (req, res) => {
   try {
     const searchQuery = req.query.filter as string;
     const users = await graph.getADUsers(searchQuery);
@@ -307,6 +312,51 @@ usersRouter.use("/search", async (req, res) => {
       appLogger.error("User SEARCH Error:", "unknown error");
       res.status(500).send({ error: "unknown error", message: "User SEARCH error" });
     }
+  }
+});
+
+/**
+ * @swagger
+ * /users/{id}:
+ *  get:
+ *    summary: Get user by ID
+ *    description: Retrieves a specific user by their ID
+ *    tags:
+ *      - Users
+ *    parameters:
+ *      - in: path
+ *        name: id
+ *        required: true
+ *        schema:
+ *          type: string
+ *    responses:
+ *      '200':
+ *        description: User data retrieved successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              $ref: '#/components/schemas/UserData'
+ *      '404':
+ *        description: User not found
+ *      '500':
+ *        description: Internal Server Error
+ */
+usersRouter.get('/:id', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const user = await WqimsUser.getUser(userId);
+    
+    if (user) {
+      res.json(user.attributes);
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ 
+      message: 'Error fetching user', 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    });
   }
 });
 
