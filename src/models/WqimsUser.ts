@@ -470,6 +470,28 @@ class WqimsUser extends WqimsObject implements Wqims {
       return Promise.reject(error);
     }
   }
+
+  static async getFeatureByEmail(email: string): Promise<WqimsUser | null> {
+    try {
+      const response = await ArcGISService.request<IQueryResponse>(
+        `${WqimsUser.featureUrl}/query`,
+        'POST',
+        {
+          where: `EMAIL = '${email}' AND ACTIVE = 1`,
+          outFields: ["*"],
+          returnGeometry: false,
+        }
+      );
+      
+      if (response.features?.[0]) {
+        return new WqimsUser(response.features[0].attributes);
+      }
+      return null;
+    } catch (error) {
+      appLogger.error("Error getting user by email:", error);
+      throw error;
+    }
+  }
 }
 
 /**

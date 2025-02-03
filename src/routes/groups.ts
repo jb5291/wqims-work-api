@@ -292,7 +292,7 @@ groupsRouter.post("/", /* verifyAndRefreshToken, logRequest, */ async (req, res)
  *              type: string
  *              example: 'Internal Server Error'
  */
-groupsRouter.patch("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+groupsRouter.patch("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const group = new WqimsGroup(req.body.group);
     const { usersToRemove = [], usersToAdd = [], thresholdsToRemove = [], thresholdsToAdd = [] } = req.body;

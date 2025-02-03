@@ -2,18 +2,14 @@ import express, { Router, Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import {base64url, EncryptJWT, jwtDecrypt, errors, JWTPayload} from "jose";
 import { AuthenticationResult, AuthError } from "@azure/msal-node";
-import {
-  queryFeatures,
-  queryRelated,
-  IQueryFeaturesResponse,
-  IQueryRelatedResponse
-} from "@esri/arcgis-rest-feature-service";
-import { ApplicationCredentialsManager } from "@esri/arcgis-rest-request";
 import { appLogger, actionLogger } from "../util/appLogger";
 import { authConfig, BASEURL, FE_FULL_URL, PROXY_LISTEN_PORT } from "../util/secrets";
 import TokenValidator from "../util/tokenValidator";
 import { default as graph } from "../util/graph";
 import session from "express-session";
+import { WqimsUser } from "../models/WqimsUser";
+import { ArcGISService } from '../services/ArcGISService';
+import { IQueryRelatedResponse } from '../models/Wqims.interface';
 
 /**
  * Express router for authentication-related routes.
@@ -48,10 +44,15 @@ authRouter.get("/callback", async (req: Request, res: Response) => {
   const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
   try {
     const accounts = await graph.cca.getTokenCache().getAllAccounts();
-    const userHomeAcctId = await getUserSessionFromToken(req.cookies["token"]);
+    
+    // Only try to get user session if token exists
+    let userHomeAcctId = null;
+    if (req.cookies["token"]) {
+      userHomeAcctId = await getUserSessionFromToken(req.cookies["token"]);
+    }
 
     let response!: AuthenticationResult;
-    // check if user is token is in MSAL cache
+    // check if user token is in MSAL cache
     if(accounts.length > 0 && userHomeAcctId && accounts.some(account => account.homeAccountId === userHomeAcctId)) {
       
       const account = accounts.find(account => account.homeAccountId === userHomeAcctId);
@@ -78,7 +79,7 @@ authRouter.get("/callback", async (req: Request, res: Response) => {
     if (await tokenValidator.validateMSAccessTokenClaims(response.accessToken)) {
       graph.initGraphClient(response.accessToken);
       const user = await graph.getUserDetails();
-      // const userId = await getUserId(user.mail);
+      const userId = await getUserId(user.mail);
       const encodedSecret = base64url.decode(authConfig.jwt_secret_key);
       const userSession = {
         [response.account?.homeAccountId as string]: {
@@ -86,11 +87,11 @@ authRouter.get("/callback", async (req: Request, res: Response) => {
         }
       }
 
-      //const jwtToken = await createJWT({ userId, homeAccountId: response.account?.homeAccountId }, encodedSecret, "15m");
-      //const refreshToken = await createJWT({ userId, homeAccountId: response.account?.homeAccountId }, encodedSecret, "7d");
+      const jwtToken = await createJWT({ userId, homeAccountId: response.account?.homeAccountId }, encodedSecret, "15m");
+      const refreshToken = await createJWT({ userId, homeAccountId: response.account?.homeAccountId }, encodedSecret, "7d");
       
-      //res.cookie("token", jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
-      //res.cookie("refreshToken", refreshToken, { httpOnly: true, secure: true, sameSite: "none" });
+      res.cookie("token", jwtToken, { httpOnly: true, secure: true, sameSite: "none" });
+      res.cookie("refreshToken", refreshToken, { httpOnly: true, secure: true, sameSite: "none" });
       actionLogger.info("User logged in", { id: user.mail, ip });
       res.redirect(`${FE_FULL_URL}/login?success=true`);
     } else {
@@ -134,11 +135,15 @@ authRouter.post("/proxyCheck", (req: Request, res: Response) => res.send(true));
  */
 authRouter.post("/checkToken", async (req: Request, res: Response) => {
   try {
-    const status = await checkToken(req, res);
-    res.status(status === "JsonWebTokenError" || status === "TokenExpiredError" ? 403 : 200).send(status === "success" ? true : status)
+    const userId = await checkToken(req, res);
+    if (userId && userId !== "error") {
+      res.status(200).send(true);
+    } else {
+      res.status(401).send({ error: "Invalid token" });
+    }
   } catch (error) {
     appLogger.error(error);
-    res.status(403).send("Unauthorized");
+    res.status(401).send({ error: "Unauthorized" });
   }
 });
 
@@ -149,7 +154,7 @@ authRouter.post("/checkToken", async (req: Request, res: Response) => {
  * @returns {boolean|string} - Returns true if the user has permission, otherwise returns "Forbidden".
  * @throws {Error} - Throws an error if the user is unauthorized or if there is an internal server error.
  */
-// authRouter.post("/checkPermissions", verifyAndRefreshToken, checkActionPermissions());
+authRouter.post("/checkPermissions", checkActionPermissions());
 
 /**
  * Middleware to verify and refresh token if necessary.
@@ -203,64 +208,60 @@ async function refreshToken(req: Request): Promise<{ newAccessToken: string, new
  * @param email - User's email address
  * @returns User ID
  */
-// async function getUserId(email: string): Promise<string> {
-//   try {
-//     const response: IQueryFeaturesResponse = await queryFeatures({
-//       url: `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`,
-//       where: `EMAIL = '${email}'`,
-//       outFields: ["OBJECTID", "GLOBALID"],
-//       returnGeometry: false,
-//       authentication: gisCredentialManager,
-//     }) as IQueryFeaturesResponse;
+async function getUserId(email: string): Promise<string> {
+  try {
+    const user = await WqimsUser.getFeatureByEmail(email);
+    if (!user) throw new Error("User not found");
 
-//     if (response.features?.[0]?.attributes) {
-//       const encodedSecret = base64url.decode(authConfig.payload_secret_key);
-//       return new EncryptJWT({ userId: response.features[0].attributes.OBJECTID })
-//           .setProtectedHeader({ alg: "dir", enc: "A256CBC-HS512" })
-//           .setIssuedAt()
-//           .setExpirationTime("15m")
-//           .encrypt(encodedSecret);
-//     } else {
-//       throw new Error("User not found");
-//     }
-//   } catch (error) {
-//     appLogger.error(error);
-//     throw error;
-//   }
-// }
+    const encodedSecret = base64url.decode(authConfig.payload_secret_key);
+    return new EncryptJWT({ userId: user.OBJECTID })
+      .setProtectedHeader({ alg: "dir", enc: "A256CBC-HS512" })
+      .setIssuedAt()
+      .setExpirationTime("15m")
+      .encrypt(encodedSecret);
+  } catch (error) {
+    appLogger.error(error);
+    throw error;
+  }
+}
 
 /**
  * Middleware to check action permissions.
  * @returns Middleware function
  */
-// function checkActionPermissions() {
-//   return async function (req: Request, res: Response) {
-//     try {
-//       const action = req.query.action as string;
-//       const userId = await checkToken(req, res);
-//       if (!userId) return res.status(403).send("Unauthorized");
+function checkActionPermissions() {
+  return async function (req: Request, res: Response) {
+    try {
+      const action = req.query.action as string;
+      const userId = await checkToken(req, res);
+      if (!userId) return res.status(403).send("Unauthorized");
 
-//       const response = await queryRelated({
-//         url: `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}`,
-//         objectIds: [parseInt(userId)],
-//         outFields: ["*"],
-//         relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
-//         authentication: gisCredentialManager,
-//       }) as IQueryRelatedResponse;
+      // Use ArcGIS service to query related records
+      const response = await ArcGISService.request<IQueryRelatedResponse>(
+        `${authConfig.arcgis.feature_url}/${authConfig.arcgis.layers.users}/queryRelatedRecords`,
+        'GET',
+        {
+          objectIds: [parseInt(userId)],
+          outFields: ["*"],
+          relationshipId: parseInt(authConfig.arcgis.layers.userroles_rel_id),
+          returnGeometry: false
+        }
+      );
 
-//       const relatedRecord = response.relatedRecordGroups?.[0]?.relatedRecords?.[0];
-//       if (relatedRecord && action in relatedRecord.attributes) {
-//         res.status(relatedRecord.attributes[action] ? 200 : 403).send(relatedRecord.attributes[action] ? true : "Forbidden");
-//       } else {
-//         appLogger.warn("Action not found in related records");
-//         res.status(403).send("Forbidden");
-//       }
-//     } catch (error) {
-//       appLogger.error(error);
-//       res.status(403).send("Unauthorized");
-//     }
-//   };
-// }
+      const relatedRecord = response.relatedRecordGroups?.[0]?.relatedRecords?.[0];
+      if (relatedRecord && action in relatedRecord.attributes) {
+        res.status(relatedRecord.attributes[action] ? 200 : 403)
+          .send(relatedRecord.attributes[action] ? true : "Forbidden");
+      } else {
+        appLogger.warn("Action not found in related records");
+        res.status(403).send("Forbidden");
+      }
+    } catch (error) {
+      appLogger.error(error);
+      res.status(403).send("Unauthorized");
+    }
+  };
+}
 
 /**
  * Checks the validity of the token.

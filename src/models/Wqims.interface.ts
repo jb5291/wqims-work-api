@@ -6,3 +6,11 @@ export interface Wqims {
   softDeleteFeature(): Promise<IEditFeatureResult>;
   reactivateFeature(response: IQueryFeaturesResponse): Promise<IEditFeatureResult>;
 }
+
+export interface IQueryRelatedResponse {
+  relatedRecordGroups?: {
+    relatedRecords?: {
+      attributes: Record<string, any>;
+    }[];
+  }[];
+}

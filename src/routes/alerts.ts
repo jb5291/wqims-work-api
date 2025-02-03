@@ -144,7 +144,7 @@ alertsRouter.use(cookieParser());
  *              type: string
  *              example: 'Internal Server Error'
  */
-alertsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
+alertsRouter.get("/", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const userId = await checkToken(req, res) as string;
     if(!userId) { throw new Error("Invalid Token") }
@@ -189,7 +189,7 @@ alertsRouter.get("/", verifyAndRefreshToken, logRequest, async (req, res) => {
  *              type: string
  *              example: 'Internal Server Error'
  */
-alertsRouter.get("/all", verifyAndRefreshToken, logRequest, async (req, res) => {
+alertsRouter.get("/all", /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const allAlertsResponse = await WqimsAlert.getActiveFeatures();
     res.json(allAlertsResponse.map((feature) => feature.attributes));
@@ -231,7 +231,7 @@ alertsRouter.get("/all", verifyAndRefreshToken, logRequest, async (req, res) => 
  *              type: string
  *              example: 'Internal Server Error'
  */
-alertsRouter.post("/status", verifyAndRefreshToken, logRequest, async (req, res) => {
+alertsRouter.post("/status",/*  verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const alert = new WqimsAlert(req.body);
     const userId = await checkToken(req, res) as string;
@@ -246,7 +246,7 @@ alertsRouter.post("/status", verifyAndRefreshToken, logRequest, async (req, res)
   }
 });
 
-alertsRouter.get('/:id', verifyAndRefreshToken, logRequest, async (req, res) => {
+alertsRouter.get('/:id', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
   try {
     const alertId = parseInt(req.params.id);
     const alert = await WqimsAlert.getAlert(alertId);
@@ -258,6 +258,47 @@ alertsRouter.get('/:id', verifyAndRefreshToken, logRequest, async (req, res) => 
   } catch (error) {
     console.error('Error fetching alert:', error);
     res.status(500).json({ message: 'Error fetching alert', error });
+  }
+});
+
+/**
+ * @swagger
+ * /alerts/{id}/globalid:
+ *  get:
+ *    summary: Get alert's GLOBALID by OBJECTID
+ *    description: Gets the GLOBALID of an alert by its OBJECTID
+ *    tags:
+ *      - Alerts
+ *    parameters:
+ *      - in: path
+ *        name: id
+ *        required: true
+ *        schema:
+ *          type: integer
+ *    responses:
+ *      '200':
+ *        description: Alert's GLOBALID
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: string
+ *      '404':
+ *        description: Alert not found
+ *      '500':
+ *        description: Internal Server Error
+ */
+alertsRouter.get('/:id/globalid', /* verifyAndRefreshToken, logRequest, */ async (req, res) => {
+  try {
+    const alertId = parseInt(req.params.id);
+    const alert = await WqimsAlert.getAlert(alertId);
+    if (alert) {
+      res.json(alert.attributes.GLOBALID);
+    } else {
+      res.status(404).json({ message: 'Alert not found' });
+    }
+  } catch (error) {
+    console.error('Error fetching alert GLOBALID:', error);
+    res.status(500).json({ message: 'Error fetching alert GLOBALID', error });
   }
 });
 
